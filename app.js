@@ -20,7 +20,7 @@ const colorByType = {
 
 const EARTH_RADIUS_M = 6371000;
 const ROUTE_API = "https://router.project-osrm.org/route/v1/walking/";
-const MAX_LIST_ITEMS = 200;
+const MAX_NEARBY = 5;
 
 const normalize = (value) => (value || "").replace(/\s+/g, " ").trim();
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -45,7 +45,6 @@ function normalizeTypeValue(value) {
 
 function groupRawRows(rows) {
   const map = new Map();
-
   for (const row of rows) {
     const key = [row.district, normalize(row.address), normalize(row.place || "-")].join("|");
     if (!map.has(key)) {
@@ -63,7 +62,6 @@ function groupRawRows(rows) {
         loaded: false,
       });
     }
-
     const place = map.get(key);
     place.ids.push(row.id);
     for (const type of normalizeTypeValue(row.type)) {
@@ -71,7 +69,6 @@ function groupRawRows(rows) {
     }
     place.rows.push(row);
   }
-
   return [...map.values()].sort((a, b) =>
     `${a.district}${a.address}${a.place}`.localeCompare(`${b.district}${b.address}${b.place}`, "ko")
   );
@@ -153,7 +150,6 @@ function popupHtml(place) {
   const typeBadges = uniqueTypes(place.types)
     .map((type) => `<span class="pill">${type}</span>`)
     .join("");
-
   return `
     <div class="popup-title">${place.district} ${place.place || ""}</div>
     <div class="popup-line">Address: ${place.address}</div>
@@ -166,15 +162,12 @@ function popupHtml(place) {
 
 function renderList(items, onSelect) {
   locationListEl.innerHTML = "";
-
   if (!items.length) {
     locationListEl.innerHTML = '<div class="status">No places match the current filters.</div>';
     return;
   }
 
-  const listItems = items.length > MAX_LIST_ITEMS ? items.slice(0, MAX_LIST_ITEMS) : items;
-
-  for (const item of listItems) {
+  for (const item of items) {
     const node = document.createElement("div");
     node.className = "location-item";
     node.innerHTML = `
@@ -185,13 +178,6 @@ function renderList(items, onSelect) {
     `;
     node.addEventListener("click", () => onSelect(item));
     locationListEl.appendChild(node);
-  }
-
-  if (items.length > MAX_LIST_ITEMS) {
-    const tail = document.createElement("div");
-    tail.className = "status";
-    tail.textContent = `Only the first ${MAX_LIST_ITEMS} items are listed. The map still shows all loaded markers.`;
-    locationListEl.appendChild(tail);
   }
 }
 
@@ -215,23 +201,8 @@ function createMapState(kakao) {
     activeLoadToken: 0,
     districtLoadPromises: new Map(),
     loadedDistricts: new Set(),
-    loadedPlaceCount: 0,
     routeTargetKey: null,
   };
-}
-
-function countLoadedPlaces(placesByDistrict) {
-  let count = 0;
-  for (const places of placesByDistrict.values()) {
-    for (const place of places) {
-      if (place.loaded) count += 1;
-    }
-  }
-  return count;
-}
-
-function getAllPlaces(placesByDistrict) {
-  return [...placesByDistrict.values()].flat();
 }
 
 function clearAllMarkers(state) {
@@ -251,7 +222,6 @@ function removeMarker(state, key) {
 
 function createOrUpdateMarker(state, place) {
   if (!place.loaded || !place.lat || !place.lng) return;
-
   const position = new state.kakao.maps.LatLng(place.lat, place.lng);
   let marker = state.markers.get(place.key);
 
@@ -327,7 +297,7 @@ async function resolvePlaceCoordinates(state, place) {
       return result;
     }
 
-    await sleep(60);
+    await sleep(50);
   }
 
   return null;
@@ -387,11 +357,10 @@ async function loadDistrict(state, placesByDistrict, district, onProgress) {
         }
       }
       onProgress?.(loadedCount, places.length, place);
-      await sleep(20);
+      await sleep(15);
     }
 
     state.loadedDistricts.add(district);
-    state.loadedPlaceCount = countLoadedPlaces(placesByDistrict);
     return places;
   })();
 
@@ -406,15 +375,60 @@ async function loadAllDistricts(state, placesByDistrict, onProgress) {
   }
 }
 
+function countLoadedPlaces(placesByDistrict) {
+  let count = 0;
+  for (const places of placesByDistrict.values()) {
+    for (const place of places) {
+      if (place.loaded) count += 1;
+    }
+  }
+  return count;
+}
+
+function getAllPlaces(placesByDistrict) {
+  return [...placesByDistrict.values()].flat();
+}
+
+function distanceMeters(lat1, lng1, lat2, lng2) {
+  const toRad = (deg) => (deg * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  return 2 * EARTH_RADIUS_M * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function getReferenceLatLng(state) {
+  if (state.currentLocation.latLng) return state.currentLocation.latLng;
+  return state.map.getCenter();
+}
+
+function sortByDistance(referenceLatLng, places) {
+  const ref = { lat: referenceLatLng.getLat(), lng: referenceLatLng.getLng() };
+  return [...places].sort((a, b) => {
+    const da = distanceMeters(ref.lat, ref.lng, a.lat, a.lng);
+    const db = distanceMeters(ref.lat, ref.lng, b.lat, b.lng);
+    return da - db;
+  });
+}
+
 function getVisiblePlaces(state, placesByDistrict) {
   const source =
     state.activeDistrict === "all"
       ? getAllPlaces(placesByDistrict)
       : placesByDistrict.get(state.activeDistrict) || [];
 
-  return source.filter(
+  const filtered = source.filter(
     (place) => place.loaded && (state.activeType === "all" || place.types.has(state.activeType))
   );
+
+  if (state.activeDistrict === "all") {
+    const ref = getReferenceLatLng(state);
+    return sortByDistance(ref, filtered).slice(0, MAX_NEARBY);
+  }
+
+  return filtered;
 }
 
 function updateListAndMarkers(state, placesByDistrict) {
@@ -423,9 +437,10 @@ function updateListAndMarkers(state, placesByDistrict) {
       ? getAllPlaces(placesByDistrict)
       : placesByDistrict.get(state.activeDistrict) || [];
   const visible = getVisiblePlaces(state, placesByDistrict);
+  const visibleKeySet = new Set(visible.map((place) => place.key));
 
   for (const place of districtPlaces) {
-    if (place.loaded && (state.activeType === "all" || place.types.has(state.activeType))) {
+    if (visibleKeySet.has(place.key)) {
       createOrUpdateMarker(state, place);
     } else {
       removeMarker(state, place.key);
@@ -444,32 +459,20 @@ function updateListAndMarkers(state, placesByDistrict) {
     }
   });
 
-  refreshMarkerStyles(state, districtPlaces);
-}
-
-function distanceMeters(lat1, lng1, lat2, lng2) {
-  const toRad = (deg) => (deg * Math.PI) / 180;
-  const dLat = toRad(lat2 - lat1);
-  const dLng = toRad(lng2 - lng1);
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
-  return 2 * EARTH_RADIUS_M * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  resolvedCountEl.textContent = String(visible.length);
+  refreshMarkerStyles(state, visible);
 }
 
 function findNearestPlace(state, places) {
-  if (!state.currentLocation.latLng) return null;
-
-  const origin = {
-    lat: state.currentLocation.latLng.getLat(),
-    lng: state.currentLocation.latLng.getLng(),
-  };
+  const ref = getReferenceLatLng(state);
+  if (!ref) return null;
+  const refPoint = { lat: ref.getLat(), lng: ref.getLng() };
 
   let nearest = null;
   let nearestDistance = Infinity;
   for (const place of places) {
     if (!place.loaded || !place.lat || !place.lng) continue;
-    const distance = distanceMeters(origin.lat, origin.lng, place.lat, place.lng);
+    const distance = distanceMeters(refPoint.lat, refPoint.lng, place.lat, place.lng);
     if (distance < nearestDistance) {
       nearestDistance = distance;
       nearest = place;
@@ -574,8 +577,7 @@ async function initializeMap() {
 
       rawCountEl.textContent = String(trashBins.length);
       placeCountEl.textContent = String(groupedPlaces.length);
-      state.loadedPlaceCount = countLoadedPlaces(placesByDistrict);
-      resolvedCountEl.textContent = String(state.loadedPlaceCount);
+      resolvedCountEl.textContent = "0";
 
       for (const district of districtNames) {
         const option = document.createElement("option");
@@ -587,6 +589,7 @@ async function initializeMap() {
       async function showCurrentLocation() {
         if (!navigator.geolocation) {
           statusTextEl.textContent = "This browser does not support geolocation.";
+          state.map.setCenter(new state.kakao.maps.LatLng(37.5665, 126.978));
           return;
         }
 
@@ -625,10 +628,13 @@ async function initializeMap() {
             emergencyStatusEl.textContent =
               "With current location set, the emergency button can find the nearest trash bin.";
             locateBtnEl.disabled = false;
+            onFilterChange();
           },
           (error) => {
             statusTextEl.textContent = `Could not get current location: ${error.message}`;
             locateBtnEl.disabled = false;
+            state.map.setCenter(new state.kakao.maps.LatLng(37.5665, 126.978));
+            onFilterChange();
           },
           {
             enableHighAccuracy: true,
@@ -640,8 +646,6 @@ async function initializeMap() {
 
       async function ensureAllPlacesLoaded(onProgress) {
         await loadAllDistricts(state, placesByDistrict, onProgress);
-        state.loadedPlaceCount = countLoadedPlaces(placesByDistrict);
-        resolvedCountEl.textContent = String(state.loadedPlaceCount);
       }
 
       async function handleEmergency() {
@@ -656,10 +660,8 @@ async function initializeMap() {
 
         try {
           await ensureAllPlacesLoaded((loaded, total, place) => {
-            state.loadedPlaceCount = countLoadedPlaces(placesByDistrict);
-            resolvedCountEl.textContent = String(state.loadedPlaceCount);
-            const loadedText = place?.district ? `${place.district} loading` : "Loading all";
-            statusTextEl.textContent = `${loadedText}: ${loaded}/${total}`;
+            const label = place?.district ? `${place.district} loading` : "Loading all";
+            statusTextEl.textContent = `${label}: ${loaded}/${total}`;
           });
 
           const nearestPlace = findNearestPlace(state, getAllPlaces(placesByDistrict));
@@ -673,7 +675,7 @@ async function initializeMap() {
             new state.kakao.maps.LatLng(nearestPlace.lat, nearestPlace.lng)
           );
           drawRouteOnMap(state, routeCoords, nearestPlace);
-          refreshMarkerStyles(state, getAllPlaces(placesByDistrict));
+          updateListAndMarkers(state, placesByDistrict);
 
           const marker = state.markers.get(nearestPlace.key);
           if (marker) {
@@ -695,7 +697,7 @@ async function initializeMap() {
           }
 
           applyStraightRoute(state, nearestPlace);
-          refreshMarkerStyles(state, getAllPlaces(placesByDistrict));
+          updateListAndMarkers(state, placesByDistrict);
           emergencyStatusEl.textContent = `Emergency route shown as a straight line. Nearest bin: ${
             nearestPlace.district
           } ${nearestPlace.place || nearestPlace.address}`;
@@ -715,36 +717,30 @@ async function initializeMap() {
         clearAllMarkers(state);
 
         if (state.activeDistrict === "all") {
-          statusTextEl.textContent = "Loading all districts...";
-          locationListEl.innerHTML = '<div class="status">Loading the full map...</div>';
+          statusTextEl.textContent = "Loading nearby bins...";
+          locationListEl.innerHTML = '<div class="status">Loading nearby bins...</div>';
 
           await ensureAllPlacesLoaded((loaded, total, place) => {
             if (token !== state.activeLoadToken) return;
-            state.loadedPlaceCount = countLoadedPlaces(placesByDistrict);
-            resolvedCountEl.textContent = String(state.loadedPlaceCount);
-            const prefix = place?.district ? `${place.district} loading` : "Loading all";
-            statusTextEl.textContent = `${prefix}: ${loaded}/${total}`;
-            if (loaded % 10 === 0) {
-              updateListAndMarkers(state, placesByDistrict);
-            }
+            const label = place?.district ? `${place.district} loading` : "Loading all";
+            statusTextEl.textContent = `${label}: ${loaded}/${total}`;
+            updateListAndMarkers(state, placesByDistrict);
           });
 
           if (token !== state.activeLoadToken) return;
 
           updateListAndMarkers(state, placesByDistrict);
-          state.map.setCenter(new state.kakao.maps.LatLng(37.5665, 126.978));
-          state.map.setLevel(8);
-          statusTextEl.textContent = "All trash bins are displayed.";
+          state.map.setLevel(4);
+          statusTextEl.textContent = "Showing the 5 nearest trash bins.";
           return;
         }
 
         statusTextEl.textContent = `${state.activeDistrict} data is loading...`;
         await loadDistrict(state, placesByDistrict, state.activeDistrict, (loaded, total, place) => {
           if (token !== state.activeLoadToken) return;
-          state.loadedPlaceCount = countLoadedPlaces(placesByDistrict);
-          resolvedCountEl.textContent = String(state.loadedPlaceCount);
-          const prefix = place?.district ? `${place.district} loading` : state.activeDistrict;
-          statusTextEl.textContent = `${prefix}: ${loaded}/${total}`;
+          const label = place?.district ? `${place.district} loading` : state.activeDistrict;
+          statusTextEl.textContent = `${label}: ${loaded}/${total}`;
+          updateListAndMarkers(state, placesByDistrict);
         });
 
         if (token !== state.activeLoadToken) return;
@@ -762,12 +758,12 @@ async function initializeMap() {
       locateBtnEl.addEventListener("click", showCurrentLocation);
       emergencyBtnEl.addEventListener("click", handleEmergency);
 
-      statusTextEl.textContent = "Loading all districts...";
+      statusTextEl.textContent = "Loading nearby bins...";
       emergencyStatusEl.textContent =
         "Set your current location, then use the emergency button to find the nearest bin.";
       locationListEl.innerHTML = '<div class="status">Loading the map...</div>';
 
-      await onFilterChange();
+      await showCurrentLocation();
     });
   } catch (error) {
     console.error("Kakao map init failed:", error);

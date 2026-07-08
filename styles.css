@@ -213,7 +213,11 @@ body {
 }
 
 .emergency-btn {
-  width: 100%;
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 1200;
+  min-width: 140px;
   padding: 12px 14px;
   border: 1px solid rgba(248, 113, 113, 0.55);
   border-radius: 12px;
@@ -366,5 +370,10 @@ body {
 
   #map {
     min-height: 60vh;
+  }
+
+  .emergency-btn {
+    right: 16px;
+    bottom: 16px;
   }
 }
