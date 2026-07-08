@@ -8,7 +8,9 @@ const districtFilterEl = document.getElementById("districtFilter");
 const typeFilterEl = document.getElementById("typeFilter");
 const locationListEl = document.getElementById("locationList");
 const locateBtnEl = document.getElementById("locateBtn");
+const routeBtnEl = document.getElementById("routeBtn");
 const emergencyBtnEl = document.getElementById("emergencyBtn");
+const routeStatusEl = document.getElementById("routeStatus");
 const emergencyStatusEl = document.getElementById("emergencyStatus");
 
 const typePriority = ["일반쓰레기", "재활용쓰레기", "담배꽁초 수거함"];
@@ -160,9 +162,32 @@ function popupHtml(place) {
   `;
 }
 
-function buildKakaoRouteUrl(place) {
+function buildKakaoRouteUrl(place, originLatLng) {
   const label = encodeURIComponent(place.place || place.address || "Trash Bin");
-  return `https://map.kakao.com/link/to/${label},${place.lat},${place.lng}`;
+  const destinationUrl = `https://map.kakao.com/link/to/${label},${place.lat},${place.lng}`;
+  if (!originLatLng) {
+    return destinationUrl;
+  }
+
+  const originLabel = encodeURIComponent("Current Location");
+  const originLat = typeof originLatLng.getLat === "function" ? originLatLng.getLat() : null;
+  const originLng = typeof originLatLng.getLng === "function" ? originLatLng.getLng() : null;
+  if (originLat === null || originLng === null) {
+    return destinationUrl;
+  }
+  return `https://map.kakao.com/link/from/${originLabel},${originLat},${originLng}/to/${label},${place.lat},${place.lng}`;
+}
+
+function openKakaoRouteWindow(place, originLatLng, routeWindow = null) {
+  const routeUrl = buildKakaoRouteUrl(place, originLatLng);
+  if (routeWindow && !routeWindow.closed) {
+    const popup = routeWindow;
+    popup.opener = null;
+    popup.location.replace(routeUrl);
+    return popup;
+  }
+  window.location.href = routeUrl;
+  return null;
 }
 
 function renderList(items, onSelect) {
@@ -510,6 +535,11 @@ function showTargetOnMap(state, targetPlace) {
   state.map.setLevel(4);
 }
 
+function getSelectedPlace(state, places) {
+  if (!state.selectedPlaceKey) return null;
+  return places.find((place) => place.key === state.selectedPlaceKey) || null;
+}
+
 async function initializeMap() {
   try {
     const kakao = await loadKakaoSdk();
@@ -602,6 +632,7 @@ async function initializeMap() {
         emergencyBtnEl.disabled = true;
         emergencyStatusEl.textContent = "Searching for the nearest trash bin...";
         statusTextEl.textContent = "Calculating emergency route...";
+        const routeWindow = window.open("", "_blank");
 
         try {
           await ensureAllPlacesLoaded((loaded, total, place) => {
@@ -610,9 +641,7 @@ async function initializeMap() {
           });
 
           const allPlaces = getAllPlaces(placesByDistrict);
-          const selectedPlace =
-            state.selectedPlaceKey && allPlaces.find((place) => place.key === state.selectedPlaceKey);
-          const nearestPlace = selectedPlace || findNearestPlace(state, allPlaces);
+          const nearestPlace = findNearestPlace(state, allPlaces);
           if (!nearestPlace) {
             emergencyStatusEl.textContent = "Could not find the nearest trash bin.";
             return;
@@ -629,11 +658,7 @@ async function initializeMap() {
             state.infoWindow.open(state.map, marker);
           }
 
-          const kakaoRouteUrl = buildKakaoRouteUrl(nearestPlace);
-          const opened = window.open(kakaoRouteUrl, "_blank", "noopener,noreferrer");
-          if (!opened) {
-            window.location.href = kakaoRouteUrl;
-          }
+          openKakaoRouteWindow(nearestPlace, state.currentLocation.latLng, routeWindow);
 
           emergencyStatusEl.textContent = `Opened Kakao Maps route to: ${nearestPlace.district} ${
             nearestPlace.place || nearestPlace.address
@@ -644,6 +669,29 @@ async function initializeMap() {
         } finally {
           emergencyBtnEl.disabled = false;
         }
+      }
+
+      function handleSelectedRoute() {
+        if (!state.currentLocation.latLng) {
+          routeStatusEl.textContent = "현재위치를 먼저 설정해 주세요.";
+          return;
+        }
+
+        const allPlaces = getAllPlaces(placesByDistrict);
+        const selectedPlace = getSelectedPlace(state, allPlaces);
+        if (!selectedPlace) {
+          routeStatusEl.textContent = "먼저 아래 목록에서 쓰레기통 하나를 선택해 주세요.";
+          return;
+        }
+
+        showTargetOnMap(state, selectedPlace);
+        updateListAndMarkers(state, placesByDistrict);
+        const routeWindow = window.open("", "_blank");
+        openKakaoRouteWindow(selectedPlace, state.currentLocation.latLng, routeWindow);
+        routeStatusEl.textContent = `카카오맵 길찾기 열기: ${selectedPlace.district} ${
+          selectedPlace.place || selectedPlace.address
+        }`;
+        statusTextEl.textContent = "Selected bin route opened.";
       }
 
       async function onFilterChange() {
@@ -695,11 +743,13 @@ async function initializeMap() {
         updateListAndMarkers(state, placesByDistrict);
       });
       locateBtnEl.addEventListener("click", showCurrentLocation);
+      routeBtnEl.addEventListener("click", handleSelectedRoute);
       emergencyBtnEl.addEventListener("click", handleEmergency);
 
       statusTextEl.textContent = "Loading nearby bins...";
       emergencyStatusEl.textContent =
         "Set your current location, then use the emergency button to find the nearest bin.";
+      routeStatusEl.textContent = "목록에서 쓰레기통을 선택한 뒤 길찾기를 누르세요.";
       locationListEl.innerHTML = '<div class="status">Loading the map...</div>';
 
       await showCurrentLocation();

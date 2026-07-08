@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>서울 쓰레기통 지도</title>
+    <title>서울 공원 쓰레기통 지도</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -17,16 +17,16 @@
       <aside class="panel">
         <div class="hero">
           <div class="eyebrow">Seoul Waste Bin Map</div>
-          <h1>서울 공원·광장 쓰레기통 위치</h1>
+          <h1>서울 공원 · 광장 쓰레기통 위치</h1>
           <p>
-            서울시 가로쓰레기통 설치정보 2025년 11월 데이터를 바탕으로 지도에 표시합니다.
-            처음에는 현재 위치 기준 가장 가까운 쓰레기통 5개만 보여주고, 구를 선택하면 해당 구로 바꿔 볼 수 있습니다.
+            현재 위치를 기준으로 가장 가까운 쓰레기통 5개를 먼저 보여주고, 선택한 항목은
+            카카오맵 길찾기로 바로 연결됩니다.
           </p>
         </div>
 
         <div class="stats">
           <div class="stat-card">
-            <span class="stat-label">원본 행</span>
+            <span class="stat-label">원본 수</span>
             <strong id="rawCount">0</strong>
           </div>
           <div class="stat-card">
@@ -47,7 +47,7 @@
             </select>
           </label>
           <label>
-            수거 종류
+            쓰레기 종류
             <select id="typeFilter">
               <option value="all">전체</option>
               <option value="일반쓰레기">일반쓰레기</option>
@@ -58,6 +58,14 @@
 
           <div class="status" id="statusText">지도를 불러오는 중...</div>
           <button type="button" id="locateBtn" class="locate-btn">현재 위치</button>
+
+          <div class="route-box">
+            <div class="route-status" id="routeStatus">
+              목록에서 쓰레기통을 선택한 뒤 길찾기를 누르세요.
+            </div>
+            <button type="button" id="routeBtn" class="route-btn">길찾기</button>
+          </div>
+
           <button type="button" id="emergencyBtn" class="emergency-btn">긴급</button>
           <div class="emergency-status" id="emergencyStatus">
             현재 위치를 잡은 뒤 긴급 버튼을 누르면 가장 가까운 쓰레기통으로 경로를 표시합니다.
