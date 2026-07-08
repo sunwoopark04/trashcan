@@ -294,6 +294,42 @@ async function initializeMap() {
         }
       };
 
+      const centerToDistrict = async (district) => {
+        if (!district || district === "all") {
+          return;
+        }
+
+        const districtKey = `district-geocode:${district}`;
+        const cached = localStorage.getItem(districtKey);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (parsed) {
+            map.setCenter(new kakao.maps.LatLng(parsed.lat, parsed.lng));
+            map.setLevel(6);
+            return;
+          }
+        }
+
+        const result = await new Promise((resolve) => {
+          geocoder.addressSearch(`서울특별시 ${district}`, (data, status) => {
+            if (status === kakao.maps.services.Status.OK && data && data.length) {
+              resolve({
+                lat: Number(data[0].y),
+                lng: Number(data[0].x),
+              });
+            } else {
+              resolve(null);
+            }
+          });
+        });
+
+        if (result) {
+          localStorage.setItem(districtKey, JSON.stringify(result));
+          map.setCenter(new kakao.maps.LatLng(result.lat, result.lng));
+          map.setLevel(6);
+        }
+      };
+
       const updateView = () => {
         const visible = grouped.filter((place) => place.status === "resolved" && matchesFilters(place));
 
@@ -319,6 +355,16 @@ async function initializeMap() {
             infoWindow.open(map, marker);
           }
         });
+
+        const selectedDistrict = districtFilterEl.value;
+        if (selectedDistrict !== "all") {
+          if (visible.length > 0) {
+            map.setCenter(new kakao.maps.LatLng(visible[0].lat, visible[0].lng));
+            map.setLevel(6);
+          } else {
+            centerToDistrict(selectedDistrict);
+          }
+        }
       };
 
       districtFilterEl.addEventListener("change", updateView);
