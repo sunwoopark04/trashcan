@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>서울 공원 쓰레기통 지도</title>
+    <title>서울 쓰레기통 지도</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -16,11 +16,11 @@
     <div class="app-shell">
       <aside class="panel">
         <div class="hero">
-          <div class="eyebrow">Seoul Park Waste Map</div>
-          <h1>서울 주요 공원/광장 쓰레기통 위치</h1>
+          <div class="eyebrow">Seoul Waste Bin Map</div>
+          <h1>서울 공원·광장 쓰레기통 위치</h1>
           <p>
-            65개 원본 데이터를 주소 기반으로 지도에 표시합니다. 같은 장소의 중복
-            행은 한 지점으로 묶어 보여줍니다.
+            서울시 가로쓰레기통 설치정보 2025년 11월 데이터를 바탕으로 지도에 표시합니다.
+            현재 위치를 잡고 구를 선택하면 버스정류장 경로와 경로 위 쓰레기통도 확인할 수 있습니다.
           </p>
         </div>
 
@@ -47,7 +47,7 @@
             </select>
           </label>
           <label>
-            수거종류
+            수거 종류
             <select id="typeFilter">
               <option value="all">전체</option>
               <option value="일반쓰레기">일반쓰레기</option>
@@ -55,15 +55,24 @@
               <option value="담배꽁초 수거함">담배꽁초 수거함</option>
             </select>
           </label>
+
           <div class="status" id="statusText">지도를 불러오는 중...</div>
           <button type="button" id="locateBtn" class="locate-btn">현재 위치</button>
+
           <div class="route-box">
             <label>
-              버스정류소 검색
-              <input id="busStopInput" class="route-input" type="text" placeholder="예: 서울역 버스정류장" />
+              버스정류장 검색
+              <input
+                id="busStopInput"
+                class="route-input"
+                type="text"
+                placeholder="예: 광화문, 종로2가, 버스정류장"
+              />
             </label>
             <button type="button" id="routeSearchBtn" class="route-btn">경로 찾기</button>
-            <div class="route-status" id="routeStatus">현재 위치를 먼저 잡고 버스정류소를 검색하세요.</div>
+            <div class="route-status" id="routeStatus">
+              현재 위치를 잡고 구를 선택한 뒤 버스정류장을 검색해 보세요.
+            </div>
             <div id="routeList" class="route-list"></div>
           </div>
         </div>
