@@ -212,6 +212,38 @@ body {
   transform: none;
 }
 
+.emergency-btn {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid rgba(248, 113, 113, 0.55);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(248, 113, 113, 0.32), rgba(248, 113, 113, 0.16));
+  color: #fff1f2;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.emergency-btn:hover {
+  border-color: rgba(248, 113, 113, 0.9);
+  transform: translateY(-1px);
+}
+
+.emergency-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.emergency-status {
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(248, 113, 113, 0.08);
+  border: 1px dashed rgba(248, 113, 113, 0.28);
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 .status {
   padding: 12px 14px;
   border: 1px dashed var(--line);

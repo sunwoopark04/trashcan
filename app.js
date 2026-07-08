@@ -8,6 +8,8 @@ const districtFilterEl = document.getElementById("districtFilter");
 const typeFilterEl = document.getElementById("typeFilter");
 const locationListEl = document.getElementById("locationList");
 const locateBtnEl = document.getElementById("locateBtn");
+const emergencyBtnEl = document.getElementById("emergencyBtn");
+const emergencyStatusEl = document.getElementById("emergencyStatus");
 
 const typePriority = ["일반쓰레기", "재활용쓰레기", "담배꽁초 수거함"];
 const colorByType = {
@@ -16,13 +18,34 @@ const colorByType = {
   "담배꽁초 수거함": "#fb7185",
 };
 
+const EARTH_RADIUS_M = 6371000;
+const ROUTE_API = "https://router.project-osrm.org/route/v1/walking/";
+const MAX_LIST_ITEMS = 200;
+
 const normalize = (value) => (value || "").replace(/\s+/g, " ").trim();
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const uniqueTypes = (types) =>
   [...types].sort((a, b) => typePriority.indexOf(a) - typePriority.indexOf(b));
 
+function normalizeTypeValue(value) {
+  const compact = normalize(value).replace(/\s+/g, "");
+  if (!compact) return [];
+  if (compact.includes("담배꽁초")) {
+    const types = ["담배꽁초 수거함"];
+    if (compact.includes("재활용")) types.push("재활용쓰레기");
+    return types;
+  }
+  if (compact.includes("일반") && compact.includes("재활용")) {
+    return ["일반쓰레기", "재활용쓰레기"];
+  }
+  if (compact.includes("재활용")) return ["재활용쓰레기"];
+  if (compact.includes("일반")) return ["일반쓰레기"];
+  return [normalize(value)];
+}
+
 function groupRawRows(rows) {
   const map = new Map();
+
   for (const row of rows) {
     const key = [row.district, normalize(row.address), normalize(row.place || "-")].join("|");
     if (!map.has(key)) {
@@ -40,9 +63,12 @@ function groupRawRows(rows) {
         loaded: false,
       });
     }
+
     const place = map.get(key);
     place.ids.push(row.id);
-    place.types.add(row.type);
+    for (const type of normalizeTypeValue(row.type)) {
+      place.types.add(type);
+    }
     place.rows.push(row);
   }
 
@@ -65,7 +91,7 @@ function buildDistrictMap(groupedPlaces) {
 function loadKakaoSdk() {
   return new Promise((resolve, reject) => {
     if (!APP_KEY || APP_KEY === "YOUR_KAKAO_JS_KEY") {
-      reject(new Error("카카오 JavaScript 키가 설정되지 않았습니다."));
+      reject(new Error("Kakao JavaScript key is not set."));
       return;
     }
 
@@ -81,7 +107,7 @@ function loadKakaoSdk() {
     script.async = true;
     script.defer = true;
     script.onload = () => resolve(window.kakao);
-    script.onerror = () => reject(new Error("카카오 SDK 로드에 실패했습니다."));
+    script.onerror = () => reject(new Error("Failed to load Kakao SDK."));
     document.head.appendChild(script);
   });
 }
@@ -100,7 +126,22 @@ function buildMarkerImage(kakao, color) {
   );
 }
 
-function getMarkerColor(place) {
+function buildTargetImage(kakao) {
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="34" height="34" viewBox="0 0 34 34">
+      <circle cx="17" cy="17" r="11" fill="#f97316" stroke="#0f172a" stroke-width="2"/>
+      <circle cx="17" cy="17" r="4" fill="white" opacity="0.95"/>
+    </svg>
+  `;
+  return new kakao.maps.MarkerImage(
+    `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`,
+    new kakao.maps.Size(34, 34),
+    { offset: new kakao.maps.Point(17, 17) }
+  );
+}
+
+function getMarkerColor(place, state) {
+  if (state.routeTargetKey === place.key) return "#fbbf24";
   const types = [...place.types];
   if (types.includes("담배꽁초 수거함")) return colorByType["담배꽁초 수거함"];
   if (types.includes("재활용쓰레기") && types.includes("일반쓰레기")) return "#14b8a6";
@@ -115,32 +156,42 @@ function popupHtml(place) {
 
   return `
     <div class="popup-title">${place.district} ${place.place || ""}</div>
-    <div class="popup-line">주소: ${place.address}</div>
-    <div class="popup-line">상세: ${place.place || "-"}</div>
+    <div class="popup-line">Address: ${place.address}</div>
+    <div class="popup-line">Detail: ${place.place || "-"}</div>
     <div class="popup-line">ID: ${place.ids.join(", ")}</div>
-    <div class="popup-line">유형: ${uniqueTypes(place.types).join(", ")}</div>
+    <div class="popup-line">Type: ${uniqueTypes(place.types).join(", ")}</div>
     <div>${typeBadges}</div>
   `;
 }
 
 function renderList(items, onSelect) {
   locationListEl.innerHTML = "";
+
   if (!items.length) {
-    locationListEl.innerHTML = '<div class="status">조건에 맞는 장소가 없습니다.</div>';
+    locationListEl.innerHTML = '<div class="status">No places match the current filters.</div>';
     return;
   }
 
-  for (const item of items) {
+  const listItems = items.length > MAX_LIST_ITEMS ? items.slice(0, MAX_LIST_ITEMS) : items;
+
+  for (const item of listItems) {
     const node = document.createElement("div");
     node.className = "location-item";
     node.innerHTML = `
-      <div class="location-title">${item.district} ${item.place || "(상세 위치 없음)"}</div>
+      <div class="location-title">${item.district} ${item.place || "(no detail)"}</div>
       <div class="location-sub">${item.address}</div>
-      <div class="location-sub">수거종류: ${uniqueTypes(item.types).join(", ")}</div>
+      <div class="location-sub">Types: ${uniqueTypes(item.types).join(", ")}</div>
       <div class="location-sub">ID: ${item.ids.join(", ")}</div>
     `;
     node.addEventListener("click", () => onSelect(item));
     locationListEl.appendChild(node);
+  }
+
+  if (items.length > MAX_LIST_ITEMS) {
+    const tail = document.createElement("div");
+    tail.className = "status";
+    tail.textContent = `Only the first ${MAX_LIST_ITEMS} items are listed. The map still shows all loaded markers.`;
+    locationListEl.appendChild(tail);
   }
 }
 
@@ -158,12 +209,29 @@ function createMapState(kakao) {
     infoWindow: new kakao.maps.InfoWindow({ zIndex: 10 }),
     markers: new Map(),
     currentLocation: { marker: null, circle: null, latLng: null },
+    routeState: { polyline: null, targetMarker: null, routeCoords: null },
     activeDistrict: "all",
     activeType: "all",
     activeLoadToken: 0,
     districtLoadPromises: new Map(),
-    resolvedPlaceCount: 0,
+    loadedDistricts: new Set(),
+    loadedPlaceCount: 0,
+    routeTargetKey: null,
   };
+}
+
+function countLoadedPlaces(placesByDistrict) {
+  let count = 0;
+  for (const places of placesByDistrict.values()) {
+    for (const place of places) {
+      if (place.loaded) count += 1;
+    }
+  }
+  return count;
+}
+
+function getAllPlaces(placesByDistrict) {
+  return [...placesByDistrict.values()].flat();
 }
 
 function clearAllMarkers(state) {
@@ -191,7 +259,7 @@ function createOrUpdateMarker(state, place) {
     marker = new state.kakao.maps.Marker({
       map: state.map,
       position,
-      image: buildMarkerImage(state.kakao, getMarkerColor(place)),
+      image: buildMarkerImage(state.kakao, getMarkerColor(place, state)),
     });
     state.kakao.maps.event.addListener(marker, "click", () => {
       state.infoWindow.setContent(
@@ -202,7 +270,7 @@ function createOrUpdateMarker(state, place) {
     state.markers.set(place.key, marker);
   } else {
     marker.setPosition(position);
-    marker.setImage(buildMarkerImage(state.kakao, getMarkerColor(place)));
+    marker.setImage(buildMarkerImage(state.kakao, getMarkerColor(place, state)));
     marker.setMap(state.map);
   }
 }
@@ -211,7 +279,7 @@ function refreshMarkerStyles(state, places) {
   for (const place of places) {
     const marker = state.markers.get(place.key);
     if (marker) {
-      marker.setImage(buildMarkerImage(state.kakao, getMarkerColor(place)));
+      marker.setImage(buildMarkerImage(state.kakao, getMarkerColor(place, state)));
     }
   }
 }
@@ -297,6 +365,9 @@ async function centerToDistrict(state, district) {
 
 async function loadDistrict(state, placesByDistrict, district, onProgress) {
   if (!district || district === "all") return [];
+  if (state.loadedDistricts.has(district)) {
+    return placesByDistrict.get(district) || [];
+  }
   if (state.districtLoadPromises.has(district)) {
     return state.districtLoadPromises.get(district);
   }
@@ -313,13 +384,14 @@ async function loadDistrict(state, placesByDistrict, district, onProgress) {
           place.lng = coords.lng;
           place.loaded = true;
           loadedCount += 1;
-          state.resolvedPlaceCount += 1;
         }
       }
       onProgress?.(loadedCount, places.length, place);
-      await sleep(25);
+      await sleep(20);
     }
 
+    state.loadedDistricts.add(district);
+    state.loadedPlaceCount = countLoadedPlaces(placesByDistrict);
     return places;
   })();
 
@@ -327,11 +399,30 @@ async function loadDistrict(state, placesByDistrict, district, onProgress) {
   return promise;
 }
 
-function updateListAndMarkers(state, placesByDistrict) {
-  const districtPlaces = placesByDistrict.get(state.activeDistrict) || [];
-  const visible = districtPlaces.filter(
+async function loadAllDistricts(state, placesByDistrict, onProgress) {
+  const districts = [...placesByDistrict.keys()].sort((a, b) => a.localeCompare(b, "ko"));
+  for (const district of districts) {
+    await loadDistrict(state, placesByDistrict, district, onProgress);
+  }
+}
+
+function getVisiblePlaces(state, placesByDistrict) {
+  const source =
+    state.activeDistrict === "all"
+      ? getAllPlaces(placesByDistrict)
+      : placesByDistrict.get(state.activeDistrict) || [];
+
+  return source.filter(
     (place) => place.loaded && (state.activeType === "all" || place.types.has(state.activeType))
   );
+}
+
+function updateListAndMarkers(state, placesByDistrict) {
+  const districtPlaces =
+    state.activeDistrict === "all"
+      ? getAllPlaces(placesByDistrict)
+      : placesByDistrict.get(state.activeDistrict) || [];
+  const visible = getVisiblePlaces(state, placesByDistrict);
 
   for (const place of districtPlaces) {
     if (place.loaded && (state.activeType === "all" || place.types.has(state.activeType))) {
@@ -356,6 +447,121 @@ function updateListAndMarkers(state, placesByDistrict) {
   refreshMarkerStyles(state, districtPlaces);
 }
 
+function distanceMeters(lat1, lng1, lat2, lng2) {
+  const toRad = (deg) => (deg * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  return 2 * EARTH_RADIUS_M * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function findNearestPlace(state, places) {
+  if (!state.currentLocation.latLng) return null;
+
+  const origin = {
+    lat: state.currentLocation.latLng.getLat(),
+    lng: state.currentLocation.latLng.getLng(),
+  };
+
+  let nearest = null;
+  let nearestDistance = Infinity;
+  for (const place of places) {
+    if (!place.loaded || !place.lat || !place.lng) continue;
+    const distance = distanceMeters(origin.lat, origin.lng, place.lat, place.lng);
+    if (distance < nearestDistance) {
+      nearestDistance = distance;
+      nearest = place;
+    }
+  }
+
+  return nearest;
+}
+
+function clearRoute(state) {
+  state.routeTargetKey = null;
+  if (state.routeState.polyline) {
+    state.routeState.polyline.setMap(null);
+    state.routeState.polyline = null;
+  }
+  if (state.routeState.targetMarker) {
+    state.routeState.targetMarker.setMap(null);
+    state.routeState.targetMarker = null;
+  }
+  state.routeState.routeCoords = null;
+}
+
+async function fetchRoutePath(startLatLng, endLatLng) {
+  const url =
+    `${ROUTE_API}${startLatLng.getLng()},${startLatLng.getLat()};${endLatLng.getLng()},${endLatLng.getLat()}` +
+    "?overview=full&geometries=geojson";
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`route fetch failed: ${response.status}`);
+  }
+
+  const json = await response.json();
+  const coords = json.routes?.[0]?.geometry?.coordinates;
+  if (!coords || !coords.length) {
+    throw new Error("route geometry missing");
+  }
+  return coords;
+}
+
+function drawRouteOnMap(state, routeCoords, targetPlace) {
+  clearRoute(state);
+
+  const path = routeCoords.map(([lng, lat]) => new state.kakao.maps.LatLng(lat, lng));
+  state.routeState.routeCoords = routeCoords;
+  state.routeState.polyline = new state.kakao.maps.Polyline({
+    map: state.map,
+    path,
+    strokeWeight: 5,
+    strokeColor: "#fbbf24",
+    strokeOpacity: 0.9,
+    strokeStyle: "solid",
+  });
+
+  const targetPosition = new state.kakao.maps.LatLng(targetPlace.lat, targetPlace.lng);
+  state.routeTargetKey = targetPlace.key;
+  state.routeState.targetMarker = new state.kakao.maps.Marker({
+    map: state.map,
+    position: targetPosition,
+    image: buildTargetImage(state.kakao),
+    title: targetPlace.place || targetPlace.address,
+  });
+
+  const bounds = new state.kakao.maps.LatLngBounds();
+  path.forEach((latLng) => bounds.extend(latLng));
+  if (state.currentLocation.latLng) bounds.extend(state.currentLocation.latLng);
+  bounds.extend(targetPosition);
+  state.map.setBounds(bounds);
+}
+
+function applyStraightRoute(state, targetPlace) {
+  clearRoute(state);
+
+  const start = state.currentLocation.latLng;
+  const end = new state.kakao.maps.LatLng(targetPlace.lat, targetPlace.lng);
+  state.routeTargetKey = targetPlace.key;
+
+  state.routeState.polyline = new state.kakao.maps.Polyline({
+    map: state.map,
+    path: [start, end],
+    strokeWeight: 5,
+    strokeColor: "#fbbf24",
+    strokeOpacity: 0.7,
+    strokeStyle: "solid",
+  });
+  state.routeState.targetMarker = new state.kakao.maps.Marker({
+    map: state.map,
+    position: end,
+    image: buildTargetImage(state.kakao),
+    title: targetPlace.place || targetPlace.address,
+  });
+}
+
 async function initializeMap() {
   try {
     const kakao = await loadKakaoSdk();
@@ -364,12 +570,14 @@ async function initializeMap() {
       const state = createMapState(kakao);
       const groupedPlaces = groupRawRows(trashBins);
       const placesByDistrict = buildDistrictMap(groupedPlaces);
+      const districtNames = [...placesByDistrict.keys()].sort((a, b) => a.localeCompare(b, "ko"));
 
       rawCountEl.textContent = String(trashBins.length);
       placeCountEl.textContent = String(groupedPlaces.length);
-      resolvedCountEl.textContent = String(groupedPlaces.length);
+      state.loadedPlaceCount = countLoadedPlaces(placesByDistrict);
+      resolvedCountEl.textContent = String(state.loadedPlaceCount);
 
-      for (const district of [...placesByDistrict.keys()].sort((a, b) => a.localeCompare(b, "ko"))) {
+      for (const district of districtNames) {
         const option = document.createElement("option");
         option.value = district;
         option.textContent = district;
@@ -378,12 +586,12 @@ async function initializeMap() {
 
       async function showCurrentLocation() {
         if (!navigator.geolocation) {
-          statusTextEl.textContent = "이 브라우저는 현재 위치 기능을 지원하지 않습니다.";
+          statusTextEl.textContent = "This browser does not support geolocation.";
           return;
         }
 
         locateBtnEl.disabled = true;
-        statusTextEl.textContent = "현재 위치를 찾는 중...";
+        statusTextEl.textContent = "Finding current location...";
 
         navigator.geolocation.getCurrentPosition(
           (position) => {
@@ -413,11 +621,13 @@ async function initializeMap() {
             state.map.setCenter(currentPosition);
             state.map.setLevel(4);
 
-            statusTextEl.textContent = "현재 위치를 찾았습니다.";
+            statusTextEl.textContent = "Current location found.";
+            emergencyStatusEl.textContent =
+              "With current location set, the emergency button can find the nearest trash bin.";
             locateBtnEl.disabled = false;
           },
           (error) => {
-            statusTextEl.textContent = `현재 위치를 가져오지 못했습니다: ${error.message}`;
+            statusTextEl.textContent = `Could not get current location: ${error.message}`;
             locateBtnEl.disabled = false;
           },
           {
@@ -428,33 +638,118 @@ async function initializeMap() {
         );
       }
 
+      async function ensureAllPlacesLoaded(onProgress) {
+        await loadAllDistricts(state, placesByDistrict, onProgress);
+        state.loadedPlaceCount = countLoadedPlaces(placesByDistrict);
+        resolvedCountEl.textContent = String(state.loadedPlaceCount);
+      }
+
+      async function handleEmergency() {
+        if (!state.currentLocation.latLng) {
+          emergencyStatusEl.textContent = "Please set your current location first.";
+          return;
+        }
+
+        emergencyBtnEl.disabled = true;
+        emergencyStatusEl.textContent = "Searching for the nearest trash bin...";
+        statusTextEl.textContent = "Calculating emergency route...";
+
+        try {
+          await ensureAllPlacesLoaded((loaded, total, place) => {
+            state.loadedPlaceCount = countLoadedPlaces(placesByDistrict);
+            resolvedCountEl.textContent = String(state.loadedPlaceCount);
+            const loadedText = place?.district ? `${place.district} loading` : "Loading all";
+            statusTextEl.textContent = `${loadedText}: ${loaded}/${total}`;
+          });
+
+          const nearestPlace = findNearestPlace(state, getAllPlaces(placesByDistrict));
+          if (!nearestPlace) {
+            emergencyStatusEl.textContent = "Could not find the nearest trash bin.";
+            return;
+          }
+
+          const routeCoords = await fetchRoutePath(
+            state.currentLocation.latLng,
+            new state.kakao.maps.LatLng(nearestPlace.lat, nearestPlace.lng)
+          );
+          drawRouteOnMap(state, routeCoords, nearestPlace);
+          refreshMarkerStyles(state, getAllPlaces(placesByDistrict));
+
+          const marker = state.markers.get(nearestPlace.key);
+          if (marker) {
+            state.infoWindow.setContent(
+              `<div style="padding:12px 14px;min-width:240px;max-width:320px;">${popupHtml(nearestPlace)}</div>`
+            );
+            state.infoWindow.open(state.map, marker);
+          }
+
+          emergencyStatusEl.textContent = `Nearest bin: ${nearestPlace.district} ${
+            nearestPlace.place || nearestPlace.address
+          }`;
+          statusTextEl.textContent = "Emergency route displayed.";
+        } catch (error) {
+          const nearestPlace = findNearestPlace(state, getAllPlaces(placesByDistrict));
+          if (!nearestPlace) {
+            emergencyStatusEl.textContent = `Emergency route failed: ${error.message}`;
+            return;
+          }
+
+          applyStraightRoute(state, nearestPlace);
+          refreshMarkerStyles(state, getAllPlaces(placesByDistrict));
+          emergencyStatusEl.textContent = `Emergency route shown as a straight line. Nearest bin: ${
+            nearestPlace.district
+          } ${nearestPlace.place || nearestPlace.address}`;
+          statusTextEl.textContent = "Emergency route shown as a straight line.";
+        } finally {
+          emergencyBtnEl.disabled = false;
+        }
+      }
+
       async function onFilterChange() {
         state.activeDistrict = districtFilterEl.value;
         state.activeType = typeFilterEl.value;
         state.activeLoadToken += 1;
         const token = state.activeLoadToken;
 
+        clearRoute(state);
         clearAllMarkers(state);
 
         if (state.activeDistrict === "all") {
-          locationListEl.innerHTML = '<div class="status">구를 선택하면 해당 구의 쓰레기통이 표시됩니다.</div>';
-          statusTextEl.textContent = "구를 선택해 주세요.";
-          resolvedCountEl.textContent = String(groupedPlaces.length);
+          statusTextEl.textContent = "Loading all districts...";
+          locationListEl.innerHTML = '<div class="status">Loading the full map...</div>';
+
+          await ensureAllPlacesLoaded((loaded, total, place) => {
+            if (token !== state.activeLoadToken) return;
+            state.loadedPlaceCount = countLoadedPlaces(placesByDistrict);
+            resolvedCountEl.textContent = String(state.loadedPlaceCount);
+            const prefix = place?.district ? `${place.district} loading` : "Loading all";
+            statusTextEl.textContent = `${prefix}: ${loaded}/${total}`;
+            if (loaded % 10 === 0) {
+              updateListAndMarkers(state, placesByDistrict);
+            }
+          });
+
+          if (token !== state.activeLoadToken) return;
+
+          updateListAndMarkers(state, placesByDistrict);
+          state.map.setCenter(new state.kakao.maps.LatLng(37.5665, 126.978));
+          state.map.setLevel(8);
+          statusTextEl.textContent = "All trash bins are displayed.";
           return;
         }
 
-        statusTextEl.textContent = `${state.activeDistrict} 데이터를 불러오는 중...`;
-
-        await loadDistrict(state, placesByDistrict, state.activeDistrict, (loaded, total) => {
+        statusTextEl.textContent = `${state.activeDistrict} data is loading...`;
+        await loadDistrict(state, placesByDistrict, state.activeDistrict, (loaded, total, place) => {
           if (token !== state.activeLoadToken) return;
-          const percent = total ? Math.round((loaded / total) * 100) : 0;
-          statusTextEl.textContent = `${state.activeDistrict} 로딩 중: ${loaded}/${total} (${percent}%)`;
-          resolvedCountEl.textContent = String(state.resolvedPlaceCount);
+          state.loadedPlaceCount = countLoadedPlaces(placesByDistrict);
+          resolvedCountEl.textContent = String(state.loadedPlaceCount);
+          const prefix = place?.district ? `${place.district} loading` : state.activeDistrict;
+          statusTextEl.textContent = `${prefix}: ${loaded}/${total}`;
         });
 
         if (token !== state.activeLoadToken) return;
 
-        statusTextEl.textContent = `${state.activeDistrict} 표시 준비 완료`;
+        statusTextEl.textContent = `${state.activeDistrict} ready`;
         updateListAndMarkers(state, placesByDistrict);
         await centerToDistrict(state, state.activeDistrict);
       }
@@ -462,14 +757,15 @@ async function initializeMap() {
       districtFilterEl.addEventListener("change", onFilterChange);
       typeFilterEl.addEventListener("change", () => {
         state.activeType = typeFilterEl.value;
-        if (state.activeDistrict !== "all") {
-          updateListAndMarkers(state, placesByDistrict);
-        }
+        updateListAndMarkers(state, placesByDistrict);
       });
       locateBtnEl.addEventListener("click", showCurrentLocation);
+      emergencyBtnEl.addEventListener("click", handleEmergency);
 
-      statusTextEl.textContent = "구를 선택하면 해당 구의 쓰레기통이 표시됩니다.";
-      locationListEl.innerHTML = '<div class="status">구를 선택하면 목록이 표시됩니다.</div>';
+      statusTextEl.textContent = "Loading all districts...";
+      emergencyStatusEl.textContent =
+        "Set your current location, then use the emergency button to find the nearest bin.";
+      locationListEl.innerHTML = '<div class="status">Loading the map...</div>';
 
       await onFilterChange();
     });
@@ -491,17 +787,17 @@ async function initializeMap() {
           #0f172a;
       ">
         <div style="max-width:520px;">
-          <div style="font-size:20px;font-weight:800;margin-bottom:10px;">카카오맵을 불러오지 못했습니다</div>
+          <div style="font-size:20px;font-weight:800;margin-bottom:10px;">Failed to load Kakao Maps</div>
           <div style="line-height:1.6;color:#cbd5e1;">
-            HTML은 열렸지만 지도 SDK가 없거나 키가 설정되지 않았습니다.
+            HTML loaded, but the map SDK is missing or the key is not configured.
             <br />
-            <strong>config.js</strong>의 <code>window.KAKAO_MAP_APP_KEY</code>를 실제 키로 바꾸고,
-            카카오 개발자 콘솔의 JavaScript SDK 도메인에 현재 주소를 등록해 주세요.
+            Update <strong>config.js</strong> with <code>window.KAKAO_MAP_APP_KEY</code> and register the current site
+            in the Kakao developer console's JavaScript SDK domain list.
           </div>
         </div>
       </div>
     `;
-    statusTextEl.textContent = "HTML은 열렸습니다. 카카오맵 설정을 확인해 주세요.";
+    statusTextEl.textContent = "HTML loaded. Please check the Kakao Maps settings.";
   }
 }
 
