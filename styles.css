@@ -105,6 +105,28 @@ body {
   outline: none;
 }
 
+.locate-btn {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(56, 189, 248, 0.2), rgba(56, 189, 248, 0.08));
+  color: #e2e8f0;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.locate-btn:hover {
+  border-color: rgba(56, 189, 248, 0.65);
+  transform: translateY(-1px);
+}
+
+.locate-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
 .status {
   padding: 12px 14px;
   border: 1px dashed var(--line);

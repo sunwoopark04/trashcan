@@ -7,6 +7,7 @@ const statusTextEl = document.getElementById("statusText");
 const districtFilterEl = document.getElementById("districtFilter");
 const typeFilterEl = document.getElementById("typeFilter");
 const locationListEl = document.getElementById("locationList");
+const locateBtnEl = document.getElementById("locateBtn");
 
 const typePriority = ["일반쓰레기", "재활용쓰레기", "담배꽁초 수거함"];
 const colorByType = {
@@ -179,7 +180,64 @@ async function initializeMap() {
       const geocoder = new kakao.maps.services.Geocoder();
       const infoWindow = new kakao.maps.InfoWindow({ zIndex: 10 });
       const markers = new Map();
+      let currentPositionMarker = null;
+      let currentPositionCircle = null;
       let resolvedCount = 0;
+
+      const showCurrentLocation = () => {
+        if (!navigator.geolocation) {
+          statusTextEl.textContent = "이 브라우저는 현재 위치 기능을 지원하지 않습니다.";
+          return;
+        }
+
+        locateBtnEl.disabled = true;
+        statusTextEl.textContent = "현재 위치를 찾는 중...";
+
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            const lat = position.coords.latitude;
+            const lng = position.coords.longitude;
+            const currentPosition = new kakao.maps.LatLng(lat, lng);
+
+            map.setCenter(currentPosition);
+            map.setLevel(4);
+
+            if (currentPositionMarker) {
+              currentPositionMarker.setMap(null);
+            }
+            if (currentPositionCircle) {
+              currentPositionCircle.setMap(null);
+            }
+
+            currentPositionMarker = new kakao.maps.Marker({
+              map,
+              position: currentPosition,
+            });
+            currentPositionCircle = new kakao.maps.Circle({
+              map,
+              center: currentPosition,
+              radius: position.coords.accuracy,
+              strokeWeight: 2,
+              strokeColor: "#38bdf8",
+              strokeOpacity: 0.8,
+              fillColor: "#38bdf8",
+              fillOpacity: 0.2,
+            });
+
+            statusTextEl.textContent = "현재 위치로 이동했습니다.";
+            locateBtnEl.disabled = false;
+          },
+          (error) => {
+            statusTextEl.textContent = `현재 위치를 가져오지 못했습니다: ${error.message}`;
+            locateBtnEl.disabled = false;
+          },
+          {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 30000,
+          }
+        );
+      };
 
       const resolvePlace = async (place) => {
         for (const query of buildQueries(place)) {
@@ -265,6 +323,7 @@ async function initializeMap() {
 
       districtFilterEl.addEventListener("change", updateView);
       typeFilterEl.addEventListener("change", updateView);
+      locateBtnEl.addEventListener("click", showCurrentLocation);
 
       statusTextEl.textContent = "카카오맵 지도를 불러왔습니다. 좌표 변환을 시작합니다.";
 
