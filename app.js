@@ -176,13 +176,13 @@ function buildKakaoRouteUrl(place, originLatLng) {
 
 function openKakaoRouteWindow(place, originLatLng, routeWindow = null) {
   const routeUrl = buildKakaoRouteUrl(place, originLatLng);
-  if (routeWindow && !routeWindow.closed) {
-    const popup = routeWindow;
-    popup.opener = null;
-    popup.location.replace(routeUrl);
-    return popup;
-  }
-  window.location.href = routeUrl;
+  const link = document.createElement("a");
+  link.href = routeUrl;
+  link.target = "_blank";
+  link.rel = "noopener noreferrer";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
   return null;
 }
 
@@ -721,11 +721,7 @@ async function initializeMap() {
             state.infoWindow.open(state.map, marker);
           }
 
-          const routeUrl = buildKakaoRouteUrl(targetPlace, state.currentLocation.latLng);
-          const routeWindow = window.open(routeUrl, "_blank");
-          if (!routeWindow) {
-            window.location.href = routeUrl;
-          }
+          openKakaoRouteWindow(targetPlace, state.currentLocation.latLng);
 
           emergencyStatusEl.textContent = `Opened Kakao Maps route to: ${targetPlace.district} ${
             targetPlace.place || targetPlace.address
@@ -753,11 +749,7 @@ async function initializeMap() {
 
         showTargetOnMap(state, selectedPlace);
         updateListAndMarkers(state, placesByDistrict);
-        const routeUrl = buildKakaoRouteUrl(selectedPlace, state.currentLocation.latLng);
-        const routeWindow = window.open(routeUrl, "_blank");
-        if (!routeWindow) {
-          window.location.href = routeUrl;
-        }
+        openKakaoRouteWindow(selectedPlace, state.currentLocation.latLng);
         routeStatusEl.textContent = `카카오맵 길찾기 열기: ${selectedPlace.district} ${
           selectedPlace.place || selectedPlace.address
         }`;
