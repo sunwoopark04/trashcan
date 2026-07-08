@@ -219,17 +219,21 @@ body {
   z-index: 1200;
   min-width: 140px;
   padding: 12px 14px;
-  border: 1px solid rgba(248, 113, 113, 0.55);
+  border: 1px solid rgba(239, 68, 68, 0.9);
   border-radius: 12px;
-  background: linear-gradient(180deg, rgba(248, 113, 113, 0.32), rgba(248, 113, 113, 0.16));
-  color: #fff1f2;
+  background: linear-gradient(180deg, rgba(239, 68, 68, 1), rgba(185, 28, 28, 0.98));
+  color: #fff7f7;
   font-weight: 800;
   cursor: pointer;
+  box-shadow:
+    0 14px 30px rgba(185, 28, 28, 0.34),
+    0 0 0 1px rgba(255, 255, 255, 0.08) inset;
 }
 
 .emergency-btn:hover {
-  border-color: rgba(248, 113, 113, 0.9);
+  border-color: rgba(252, 165, 165, 1);
   transform: translateY(-1px);
+  filter: brightness(1.04);
 }
 
 .emergency-btn:disabled {

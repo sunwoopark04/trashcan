@@ -698,7 +698,7 @@ async function initializeMap() {
         }
 
         emergencyBtnEl.disabled = true;
-        emergencyStatusEl.textContent = "Searching for the nearest trash bin...";
+        emergencyStatusEl.textContent = "Searching for the top visible trash bin...";
         statusTextEl.textContent = "Calculating emergency route...";
         const routeWindow = window.open("", "_blank");
 
@@ -716,28 +716,28 @@ async function initializeMap() {
             statusTextEl.textContent = `${label}: ${loaded}/${total}`;
           }, loadOrder);
 
-          const allPlaces = getAllPlaces(placesByDistrict);
-          const nearestPlace = findNearestPlace(state, allPlaces);
-          if (!nearestPlace) {
-            emergencyStatusEl.textContent = "Could not find the nearest trash bin.";
+          const visiblePlaces = getVisiblePlaces(state, placesByDistrict);
+          const targetPlace = visiblePlaces[0] || findNearestPlace(state, getAllPlaces(placesByDistrict));
+          if (!targetPlace) {
+            emergencyStatusEl.textContent = "Could not find a trash bin to route to.";
             return;
           }
 
-          showTargetOnMap(state, nearestPlace);
+          showTargetOnMap(state, targetPlace);
           updateListAndMarkers(state, placesByDistrict);
 
-          const marker = state.markers.get(nearestPlace.key);
+          const marker = state.markers.get(targetPlace.key);
           if (marker) {
             state.infoWindow.setContent(
-              `<div style="padding:12px 14px;min-width:240px;max-width:320px;">${popupHtml(nearestPlace)}</div>`
+              `<div style="padding:12px 14px;min-width:240px;max-width:320px;">${popupHtml(targetPlace)}</div>`
             );
             state.infoWindow.open(state.map, marker);
           }
 
-          openKakaoRouteWindow(nearestPlace, state.currentLocation.latLng, routeWindow);
+          openKakaoRouteWindow(targetPlace, state.currentLocation.latLng, routeWindow);
 
-          emergencyStatusEl.textContent = `Opened Kakao Maps route to: ${nearestPlace.district} ${
-            nearestPlace.place || nearestPlace.address
+          emergencyStatusEl.textContent = `Opened Kakao Maps route to: ${targetPlace.district} ${
+            targetPlace.place || targetPlace.address
           }`;
           statusTextEl.textContent = "Kakao Maps route opened.";
         } catch (error) {
