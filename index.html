@@ -20,7 +20,7 @@
           <h1>서울 공원·광장 쓰레기통 위치</h1>
           <p>
             서울시 가로쓰레기통 설치정보 2025년 11월 데이터를 바탕으로 지도에 표시합니다.
-            현재 위치를 잡고 구를 선택하면 버스정류장 경로와 경로 위 쓰레기통도 확인할 수 있습니다.
+            구를 선택하면 해당 구의 쓰레기통 목록과 위치를 볼 수 있습니다.
           </p>
         </div>
 
@@ -58,23 +58,6 @@
 
           <div class="status" id="statusText">지도를 불러오는 중...</div>
           <button type="button" id="locateBtn" class="locate-btn">현재 위치</button>
-
-          <div class="route-box">
-            <label>
-              버스정류장 검색
-              <input
-                id="busStopInput"
-                class="route-input"
-                type="text"
-                placeholder="예: 광화문, 종로2가, 버스정류장"
-              />
-            </label>
-            <button type="button" id="routeSearchBtn" class="route-btn">경로 찾기</button>
-            <div class="route-status" id="routeStatus">
-              현재 위치를 잡고 구를 선택한 뒤 버스정류장을 검색해 보세요.
-            </div>
-            <div id="routeList" class="route-list"></div>
-          </div>
         </div>
 
         <div class="legend">

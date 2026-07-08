@@ -8,10 +8,6 @@ const districtFilterEl = document.getElementById("districtFilter");
 const typeFilterEl = document.getElementById("typeFilter");
 const locationListEl = document.getElementById("locationList");
 const locateBtnEl = document.getElementById("locateBtn");
-const busStopInputEl = document.getElementById("busStopInput");
-const routeSearchBtnEl = document.getElementById("routeSearchBtn");
-const routeStatusEl = document.getElementById("routeStatus");
-const routeListEl = document.getElementById("routeList");
 
 const typePriority = ["일반쓰레기", "재활용쓰레기", "담배꽁초 수거함"];
 const colorByType = {
@@ -20,21 +16,10 @@ const colorByType = {
   "담배꽁초 수거함": "#fb7185",
 };
 
-const EARTH_RADIUS_M = 6371000;
-const ROUTE_API = "https://router.project-osrm.org/route/v1/walking/";
-
 const normalize = (value) => (value || "").replace(/\s+/g, " ").trim();
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const uniqueTypes = (types) =>
   [...types].sort((a, b) => typePriority.indexOf(a) - typePriority.indexOf(b));
-
-function geocodeCacheKey(query) {
-  return `kakao-geocode:${query}`;
-}
-
-function districtCacheKey(district) {
-  return `district-geocode:${district}`;
-}
 
 function groupRawRows(rows) {
   const map = new Map();
@@ -60,6 +45,7 @@ function groupRawRows(rows) {
     place.types.add(row.type);
     place.rows.push(row);
   }
+
   return [...map.values()].sort((a, b) =>
     `${a.district}${a.address}${a.place}`.localeCompare(`${b.district}${b.address}${b.place}`, "ko")
   );
@@ -114,22 +100,7 @@ function buildMarkerImage(kakao, color) {
   );
 }
 
-function buildBusStopImage(kakao) {
-  const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="34" height="34" viewBox="0 0 34 34">
-      <circle cx="17" cy="17" r="11" fill="#f97316" stroke="#0f172a" stroke-width="2"/>
-      <rect x="12" y="10" width="10" height="14" rx="2" fill="white" opacity="0.95"/>
-    </svg>
-  `;
-  return new kakao.maps.MarkerImage(
-    `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`,
-    new kakao.maps.Size(34, 34),
-    { offset: new kakao.maps.Point(17, 17) }
-  );
-}
-
-function getMarkerColor(place, routeHighlightedKeys) {
-  if (routeHighlightedKeys.has(place.key)) return "#fbbf24";
+function getMarkerColor(place) {
   const types = [...place.types];
   if (types.includes("담배꽁초 수거함")) return colorByType["담배꽁초 수거함"];
   if (types.includes("재활용쓰레기") && types.includes("일반쓰레기")) return "#14b8a6";
@@ -173,26 +144,6 @@ function renderList(items, onSelect) {
   }
 }
 
-function renderRouteResults(results, onSelect) {
-  routeListEl.innerHTML = "";
-  if (!results.length) {
-    routeListEl.innerHTML = '<div class="route-item">검색 결과가 없습니다.</div>';
-    return;
-  }
-
-  results.forEach((item, index) => {
-    const node = document.createElement("div");
-    node.className = "route-item";
-    node.innerHTML = `
-      <div class="route-item-title">${index + 1}. ${item.place_name}</div>
-      <div class="route-item-sub">${item.road_address_name || item.address_name || "-"}</div>
-      <div class="route-item-sub">${item.phone || ""}</div>
-    `;
-    node.addEventListener("click", () => onSelect(item));
-    routeListEl.appendChild(node);
-  });
-}
-
 function createMapState(kakao) {
   const mapContainer = document.getElementById("map");
   const map = new kakao.maps.Map(mapContainer, {
@@ -204,32 +155,15 @@ function createMapState(kakao) {
     kakao,
     map,
     geocoder: new kakao.maps.services.Geocoder(),
-    placesService: new kakao.maps.services.Places(),
     infoWindow: new kakao.maps.InfoWindow({ zIndex: 10 }),
     markers: new Map(),
     currentLocation: { marker: null, circle: null, latLng: null },
-    routeState: { polyline: null, busStopMarker: null, routeCoords: null },
-    routeHighlightedKeys: new Set(),
     activeDistrict: "all",
     activeType: "all",
     activeLoadToken: 0,
     districtLoadPromises: new Map(),
-    loadedDistricts: new Set(),
     resolvedPlaceCount: 0,
   };
-}
-
-function clearRoute(state) {
-  state.routeHighlightedKeys = new Set();
-  if (state.routeState.polyline) {
-    state.routeState.polyline.setMap(null);
-    state.routeState.polyline = null;
-  }
-  if (state.routeState.busStopMarker) {
-    state.routeState.busStopMarker.setMap(null);
-    state.routeState.busStopMarker = null;
-  }
-  state.routeState.routeCoords = null;
 }
 
 function clearAllMarkers(state) {
@@ -247,15 +181,6 @@ function removeMarker(state, key) {
   }
 }
 
-function refreshMarkerStyles(state, places) {
-  for (const place of places) {
-    const marker = state.markers.get(place.key);
-    if (marker) {
-      marker.setImage(buildMarkerImage(state.kakao, getMarkerColor(place, state.routeHighlightedKeys)));
-    }
-  }
-}
-
 function createOrUpdateMarker(state, place) {
   if (!place.loaded || !place.lat || !place.lng) return;
 
@@ -266,7 +191,7 @@ function createOrUpdateMarker(state, place) {
     marker = new state.kakao.maps.Marker({
       map: state.map,
       position,
-      image: buildMarkerImage(state.kakao, getMarkerColor(place, state.routeHighlightedKeys)),
+      image: buildMarkerImage(state.kakao, getMarkerColor(place)),
     });
     state.kakao.maps.event.addListener(marker, "click", () => {
       state.infoWindow.setContent(
@@ -277,9 +202,26 @@ function createOrUpdateMarker(state, place) {
     state.markers.set(place.key, marker);
   } else {
     marker.setPosition(position);
-    marker.setImage(buildMarkerImage(state.kakao, getMarkerColor(place, state.routeHighlightedKeys)));
+    marker.setImage(buildMarkerImage(state.kakao, getMarkerColor(place)));
     marker.setMap(state.map);
   }
+}
+
+function refreshMarkerStyles(state, places) {
+  for (const place of places) {
+    const marker = state.markers.get(place.key);
+    if (marker) {
+      marker.setImage(buildMarkerImage(state.kakao, getMarkerColor(place)));
+    }
+  }
+}
+
+function geocodeCacheKey(query) {
+  return `kakao-geocode:${query}`;
+}
+
+function districtCacheKey(district) {
+  return `district-geocode:${district}`;
 }
 
 function buildQueries(place) {
@@ -378,7 +320,6 @@ async function loadDistrict(state, placesByDistrict, district, onProgress) {
       await sleep(25);
     }
 
-    state.loadedDistricts.add(district);
     return places;
   })();
 
@@ -415,116 +356,6 @@ function updateListAndMarkers(state, placesByDistrict) {
   refreshMarkerStyles(state, districtPlaces);
 }
 
-function projectToMeters(lat, lng, originLat) {
-  const latRad = (lat * Math.PI) / 180;
-  const lngRad = (lng * Math.PI) / 180;
-  const originLatRad = (originLat * Math.PI) / 180;
-  return {
-    x: EARTH_RADIUS_M * lngRad * Math.cos(originLatRad),
-    y: EARTH_RADIUS_M * latRad,
-  };
-}
-
-function distancePointToSegmentMeters(point, start, end, originLat) {
-  const p = projectToMeters(point.lat, point.lng, originLat);
-  const a = projectToMeters(start.lat, start.lng, originLat);
-  const b = projectToMeters(end.lat, end.lng, originLat);
-  const dx = b.x - a.x;
-  const dy = b.y - a.y;
-  if (dx === 0 && dy === 0) {
-    return Math.hypot(p.x - a.x, p.y - a.y);
-  }
-  const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / (dx * dx + dy * dy)));
-  const nearestX = a.x + t * dx;
-  const nearestY = a.y + t * dy;
-  return Math.hypot(p.x - nearestX, p.y - nearestY);
-}
-
-function isPlaceNearRoute(place, routeCoords, thresholdMeters = 120) {
-  if (!place.lat || !place.lng || !Array.isArray(routeCoords) || routeCoords.length < 2) {
-    return false;
-  }
-
-  const originLat = routeCoords[0][1];
-  const point = { lat: place.lat, lng: place.lng };
-
-  for (let i = 0; i < routeCoords.length - 1; i += 1) {
-    const start = { lng: routeCoords[i][0], lat: routeCoords[i][1] };
-    const end = { lng: routeCoords[i + 1][0], lat: routeCoords[i + 1][1] };
-    if (distancePointToSegmentMeters(point, start, end, originLat) <= thresholdMeters) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-function highlightRouteBins(state, placesByDistrict, routeCoords) {
-  const districtPlaces = placesByDistrict.get(state.activeDistrict) || [];
-  state.routeHighlightedKeys = new Set(
-    districtPlaces.filter((place) => place.loaded && isPlaceNearRoute(place, routeCoords)).map((place) => place.key)
-  );
-  refreshMarkerStyles(state, districtPlaces);
-}
-
-function drawRouteOnMap(state, routeCoords, stopResult) {
-  clearRoute(state);
-
-  const path = routeCoords.map(([lng, lat]) => new state.kakao.maps.LatLng(lat, lng));
-  state.routeState.routeCoords = routeCoords;
-  state.routeState.polyline = new state.kakao.maps.Polyline({
-    map: state.map,
-    path,
-    strokeWeight: 5,
-    strokeColor: "#fbbf24",
-    strokeOpacity: 0.9,
-    strokeStyle: "solid",
-  });
-
-  const stopPosition = new state.kakao.maps.LatLng(Number(stopResult.y), Number(stopResult.x));
-  state.routeState.busStopMarker = new state.kakao.maps.Marker({
-    map: state.map,
-    position: stopPosition,
-    image: buildBusStopImage(state.kakao),
-    title: stopResult.place_name,
-  });
-
-  const bounds = new state.kakao.maps.LatLngBounds();
-  path.forEach((latLng) => bounds.extend(latLng));
-  if (state.currentLocation.latLng) bounds.extend(state.currentLocation.latLng);
-  bounds.extend(stopPosition);
-  state.map.setBounds(bounds);
-}
-
-async function fetchRoutePath(startLatLng, endLatLng) {
-  const url =
-    `${ROUTE_API}${startLatLng.getLng()},${startLatLng.getLat()};${endLatLng.getLng()},${endLatLng.getLat()}` +
-    "?overview=full&geometries=geojson";
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`route fetch failed: ${response.status}`);
-  }
-
-  const json = await response.json();
-  const coords = json.routes?.[0]?.geometry?.coordinates;
-  if (!coords || !coords.length) {
-    throw new Error("route geometry missing");
-  }
-  return coords;
-}
-
-function clearCurrentLocation(state) {
-  if (state.currentLocation.marker) {
-    state.currentLocation.marker.setMap(null);
-    state.currentLocation.marker = null;
-  }
-  if (state.currentLocation.circle) {
-    state.currentLocation.circle.setMap(null);
-    state.currentLocation.circle = null;
-  }
-  state.currentLocation.latLng = null;
-}
-
 async function initializeMap() {
   try {
     const kakao = await loadKakaoSdk();
@@ -536,7 +367,7 @@ async function initializeMap() {
 
       rawCountEl.textContent = String(trashBins.length);
       placeCountEl.textContent = String(groupedPlaces.length);
-      resolvedCountEl.textContent = "0";
+      resolvedCountEl.textContent = String(groupedPlaces.length);
 
       for (const district of [...placesByDistrict.keys()].sort((a, b) => a.localeCompare(b, "ko"))) {
         const option = document.createElement("option");
@@ -583,7 +414,6 @@ async function initializeMap() {
             state.map.setLevel(4);
 
             statusTextEl.textContent = "현재 위치를 찾았습니다.";
-            routeStatusEl.textContent = "현재 위치가 설정되었습니다. 구를 선택한 뒤 버스정류장을 검색해 보세요.";
             locateBtnEl.disabled = false;
           },
           (error) => {
@@ -598,135 +428,22 @@ async function initializeMap() {
         );
       }
 
-      async function routeToBusStop(stopResult) {
-        if (!state.currentLocation.latLng) {
-          routeStatusEl.textContent = "먼저 현재 위치를 잡아주세요.";
-          return;
-        }
-
-        if (state.activeDistrict === "all") {
-          routeStatusEl.textContent = "구를 선택해야 경로 위 쓰레기통을 계산할 수 있습니다.";
-          return;
-        }
-
-        routeSearchBtnEl.disabled = true;
-        routeStatusEl.textContent = `${stopResult.place_name}까지 경로를 계산하는 중...`;
-
-        try {
-          const routeCoords = await fetchRoutePath(
-            state.currentLocation.latLng,
-            new state.kakao.maps.LatLng(Number(stopResult.y), Number(stopResult.x))
-          );
-          drawRouteOnMap(state, routeCoords, stopResult);
-          highlightRouteBins(state, placesByDistrict, routeCoords);
-          routeStatusEl.textContent = `경로 위 쓰레기통 ${state.routeHighlightedKeys.size}개를 표시했습니다.`;
-        } catch (error) {
-          clearRoute(state);
-          const start = state.currentLocation.latLng;
-          const end = new state.kakao.maps.LatLng(Number(stopResult.y), Number(stopResult.x));
-          const fallbackCoords = [
-            [start.getLng(), start.getLat()],
-            [end.getLng(), end.getLat()],
-          ];
-
-          state.routeState.polyline = new state.kakao.maps.Polyline({
-            map: state.map,
-            path: [start, end],
-            strokeWeight: 5,
-            strokeColor: "#fbbf24",
-            strokeOpacity: 0.7,
-            strokeStyle: "solid",
-          });
-          state.routeState.busStopMarker = new state.kakao.maps.Marker({
-            map: state.map,
-            position: end,
-            image: buildBusStopImage(state.kakao),
-            title: stopResult.place_name,
-          });
-
-          highlightRouteBins(state, placesByDistrict, fallbackCoords);
-          routeStatusEl.textContent = `경로 API를 불러오지 못해 직선으로 표시했습니다. 경로 위 쓰레기통 ${state.routeHighlightedKeys.size}개를 표시했습니다.`;
-        } finally {
-          routeSearchBtnEl.disabled = false;
-        }
-      }
-
-      async function searchBusStops() {
-        if (!state.currentLocation.latLng) {
-          routeStatusEl.textContent = "먼저 현재 위치를 잡아주세요.";
-          return;
-        }
-
-        if (state.activeDistrict === "all") {
-          routeStatusEl.textContent = "구를 선택해야 버스정류장을 검색하고 경로를 계산할 수 있습니다.";
-          return;
-        }
-
-        routeSearchBtnEl.disabled = true;
-        routeStatusEl.textContent = "버스정류장을 검색하는 중...";
-
-        const keyword = normalize(busStopInputEl.value) || "버스정류장";
-        const searchPlaces = (query) =>
-          new Promise((resolve) => {
-            state.placesService.keywordSearch(
-              query,
-              (result, status) => {
-                if (status === state.kakao.maps.services.Status.OK) {
-                  resolve(result);
-                } else {
-                  resolve([]);
-                }
-              },
-              {
-                location: state.currentLocation.latLng,
-                radius: 5000,
-                sort: state.kakao.maps.services.SortBy.DISTANCE,
-                size: 10,
-              }
-            );
-          });
-
-        let results = await searchPlaces(keyword);
-        if (!results.length && !/버스|정류/i.test(keyword)) {
-          results = await searchPlaces(`${keyword} 버스정류장`);
-        }
-
-        renderRouteResults(results, (item) => {
-          routeToBusStop(item).catch((error) => {
-            routeStatusEl.textContent = `경로 표시 중 오류가 발생했습니다: ${error.message}`;
-          });
-        });
-
-        if (!results.length) {
-          routeStatusEl.textContent = "검색 결과가 없습니다. 다른 이름으로 다시 시도해 주세요.";
-          routeSearchBtnEl.disabled = false;
-          return;
-        }
-
-        routeStatusEl.textContent = `버스정류장 ${results.length}개를 찾았습니다. 첫 번째 결과로 경로를 표시합니다.`;
-        await routeToBusStop(results[0]);
-      }
-
       async function onFilterChange() {
         state.activeDistrict = districtFilterEl.value;
         state.activeType = typeFilterEl.value;
         state.activeLoadToken += 1;
         const token = state.activeLoadToken;
 
-        clearRoute(state);
-        routeListEl.innerHTML = "";
+        clearAllMarkers(state);
 
         if (state.activeDistrict === "all") {
-          clearAllMarkers(state);
           locationListEl.innerHTML = '<div class="status">구를 선택하면 해당 구의 쓰레기통이 표시됩니다.</div>';
           statusTextEl.textContent = "구를 선택해 주세요.";
-          routeStatusEl.textContent = "현재 위치를 잡은 뒤 구를 선택하면 버스정류장 경로를 찾을 수 있습니다.";
+          resolvedCountEl.textContent = String(groupedPlaces.length);
           return;
         }
 
-        clearAllMarkers(state);
-        routeStatusEl.textContent = `${state.activeDistrict} 데이터를 불러오는 중...`;
-        statusTextEl.textContent = `${state.activeDistrict} 좌표를 불러오는 중...`;
+        statusTextEl.textContent = `${state.activeDistrict} 데이터를 불러오는 중...`;
 
         await loadDistrict(state, placesByDistrict, state.activeDistrict, (loaded, total) => {
           if (token !== state.activeLoadToken) return;
@@ -738,7 +455,6 @@ async function initializeMap() {
         if (token !== state.activeLoadToken) return;
 
         statusTextEl.textContent = `${state.activeDistrict} 표시 준비 완료`;
-        routeStatusEl.textContent = "버스정류장 검색도 가능합니다.";
         updateListAndMarkers(state, placesByDistrict);
         await centerToDistrict(state, state.activeDistrict);
       }
@@ -751,16 +467,8 @@ async function initializeMap() {
         }
       });
       locateBtnEl.addEventListener("click", showCurrentLocation);
-      routeSearchBtnEl.addEventListener("click", searchBusStops);
-      busStopInputEl.addEventListener("keydown", (event) => {
-        if (event.key === "Enter") {
-          event.preventDefault();
-          searchBusStops();
-        }
-      });
 
       statusTextEl.textContent = "구를 선택하면 해당 구의 쓰레기통이 표시됩니다.";
-      routeStatusEl.textContent = "현재 위치를 잡고 구를 선택한 뒤 버스정류장을 검색해 보세요.";
       locationListEl.innerHTML = '<div class="status">구를 선택하면 목록이 표시됩니다.</div>';
 
       await onFilterChange();
