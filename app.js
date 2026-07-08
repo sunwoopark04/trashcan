@@ -164,18 +164,7 @@ function popupHtml(place) {
 
 function buildKakaoRouteUrl(place, originLatLng) {
   const label = encodeURIComponent(place.place || place.address || "Trash Bin");
-  const destinationUrl = `https://map.kakao.com/link/to/${label},${place.lat},${place.lng}`;
-  if (!originLatLng) {
-    return destinationUrl;
-  }
-
-  const originLabel = encodeURIComponent("Current Location");
-  const originLat = typeof originLatLng.getLat === "function" ? originLatLng.getLat() : null;
-  const originLng = typeof originLatLng.getLng === "function" ? originLatLng.getLng() : null;
-  if (originLat === null || originLng === null) {
-    return destinationUrl;
-  }
-  return `https://map.kakao.com/link/from/${originLabel},${originLat},${originLng}/to/${label},${place.lat},${place.lng}`;
+  return `https://map.kakao.com/link/to/${label},${place.lat},${place.lng}`;
 }
 
 function openKakaoRouteWindow(place, originLatLng, routeWindow = null) {
@@ -700,24 +689,15 @@ async function initializeMap() {
         emergencyBtnEl.disabled = true;
         emergencyStatusEl.textContent = "Searching for the top visible trash bin...";
         statusTextEl.textContent = "Calculating emergency route...";
-        const routeWindow = window.open("", "_blank");
-
         try {
-          const loadOrder =
-            state.preferredDistrict && districtNames.includes(state.preferredDistrict)
-              ? [
-                  state.preferredDistrict,
-                  ...districtNames.filter((district) => district !== state.preferredDistrict),
-                ]
-              : districtNames;
-
-          await loadAllDistricts(state, placesByDistrict, (loaded, total, place) => {
-            const label = place?.district ? `${place.district} loading` : "Loading all";
-            statusTextEl.textContent = `${label}: ${loaded}/${total}`;
-          }, loadOrder);
-
           const visiblePlaces = getVisiblePlaces(state, placesByDistrict);
-          const targetPlace = visiblePlaces[0] || findNearestPlace(state, getAllPlaces(placesByDistrict));
+          const loadedPlaces = getAllPlaces(placesByDistrict).filter(
+            (place) => place.loaded && place.lat && place.lng
+          );
+          const targetPlace =
+            visiblePlaces[0] ||
+            findNearestPlace(state, loadedPlaces) ||
+            findNearestPlace(state, getAllPlaces(placesByDistrict));
           if (!targetPlace) {
             emergencyStatusEl.textContent = "Could not find a trash bin to route to.";
             return;
@@ -734,7 +714,11 @@ async function initializeMap() {
             state.infoWindow.open(state.map, marker);
           }
 
-          openKakaoRouteWindow(targetPlace, state.currentLocation.latLng, routeWindow);
+          const routeUrl = buildKakaoRouteUrl(targetPlace, state.currentLocation.latLng);
+          const routeWindow = window.open(routeUrl, "_blank");
+          if (!routeWindow) {
+            window.location.href = routeUrl;
+          }
 
           emergencyStatusEl.textContent = `Opened Kakao Maps route to: ${targetPlace.district} ${
             targetPlace.place || targetPlace.address
@@ -762,8 +746,11 @@ async function initializeMap() {
 
         showTargetOnMap(state, selectedPlace);
         updateListAndMarkers(state, placesByDistrict);
-        const routeWindow = window.open("", "_blank");
-        openKakaoRouteWindow(selectedPlace, state.currentLocation.latLng, routeWindow);
+        const routeUrl = buildKakaoRouteUrl(selectedPlace, state.currentLocation.latLng);
+        const routeWindow = window.open(routeUrl, "_blank");
+        if (!routeWindow) {
+          window.location.href = routeUrl;
+        }
         routeStatusEl.textContent = `카카오맵 길찾기 열기: ${selectedPlace.district} ${
           selectedPlace.place || selectedPlace.address
         }`;
