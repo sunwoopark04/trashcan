@@ -164,7 +164,14 @@ function popupHtml(place) {
 
 function buildKakaoRouteUrl(place, originLatLng) {
   const label = encodeURIComponent(place.place || place.address || "Trash Bin");
-  return `https://map.kakao.com/link/to/${label},${place.lat},${place.lng}`;
+  if (!originLatLng || typeof originLatLng.getLat !== "function" || typeof originLatLng.getLng !== "function") {
+    return `https://map.kakao.com/link/to/${label},${place.lat},${place.lng}`;
+  }
+
+  const originLabel = encodeURIComponent("Current Location");
+  const originLat = originLatLng.getLat();
+  const originLng = originLatLng.getLng();
+  return `https://map.kakao.com/link/from/${originLabel},${originLat},${originLng}/to/${label},${place.lat},${place.lng}`;
 }
 
 function openKakaoRouteWindow(place, originLatLng, routeWindow = null) {
