@@ -105,6 +105,91 @@ body {
   outline: none;
 }
 
+.route-box {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(15, 23, 42, 0.5);
+}
+
+.route-box label {
+  display: grid;
+  gap: 6px;
+  font-size: 14px;
+}
+
+.route-input {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  color: var(--text);
+  background: rgba(15, 23, 42, 0.88);
+  outline: none;
+}
+
+.route-btn {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid rgba(251, 191, 36, 0.45);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(251, 191, 36, 0.2), rgba(251, 191, 36, 0.08));
+  color: #fff7ed;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.route-btn:hover {
+  border-color: rgba(251, 191, 36, 0.75);
+  transform: translateY(-1px);
+}
+
+.route-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.route-status {
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(251, 191, 36, 0.08);
+  border: 1px dashed rgba(251, 191, 36, 0.25);
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.route-list {
+  display: grid;
+  gap: 8px;
+}
+
+.route-item {
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgba(15, 23, 42, 0.72);
+  cursor: pointer;
+}
+
+.route-item:hover {
+  border-color: rgba(251, 191, 36, 0.6);
+}
+
+.route-item-title {
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.route-item-sub {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
 .locate-btn {
   width: 100%;
   padding: 12px 14px;

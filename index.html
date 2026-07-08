@@ -55,8 +55,17 @@
               <option value="담배꽁초 수거함">담배꽁초 수거함</option>
             </select>
           </label>
-          <div class="status" id="statusText">지도 데이터를 불러오는 중...</div>
+          <div class="status" id="statusText">지도를 불러오는 중...</div>
           <button type="button" id="locateBtn" class="locate-btn">현재 위치</button>
+          <div class="route-box">
+            <label>
+              버스정류소 검색
+              <input id="busStopInput" class="route-input" type="text" placeholder="예: 서울역 버스정류장" />
+            </label>
+            <button type="button" id="routeSearchBtn" class="route-btn">경로 찾기</button>
+            <div class="route-status" id="routeStatus">현재 위치를 먼저 잡고 버스정류소를 검색하세요.</div>
+            <div id="routeList" class="route-list"></div>
+          </div>
         </div>
 
         <div class="legend">
