@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>서울 공원 쓰레기통 지도</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="panel">
+        <div class="hero">
+          <div class="eyebrow">Seoul Park Waste Map</div>
+          <h1>서울 주요 공원/광장 쓰레기통 위치</h1>
+          <p>
+            65개 원본 데이터를 주소 기반으로 지도에 표시합니다. 같은 장소의 중복
+            행은 한 지점으로 묶어 보여줍니다.
+          </p>
+        </div>
+
+        <div class="stats">
+          <div class="stat-card">
+            <span class="stat-label">원본 행</span>
+            <strong id="rawCount">0</strong>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">장소 수</span>
+            <strong id="placeCount">0</strong>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">표시 완료</span>
+            <strong id="resolvedCount">0</strong>
+          </div>
+        </div>
+
+        <div class="controls">
+          <label>
+            구 선택
+            <select id="districtFilter">
+              <option value="all">전체</option>
+            </select>
+          </label>
+          <label>
+            수거종류
+            <select id="typeFilter">
+              <option value="all">전체</option>
+              <option value="일반쓰레기">일반쓰레기</option>
+              <option value="재활용쓰레기">재활용쓰레기</option>
+              <option value="담배꽁초 수거함">담배꽁초 수거함</option>
+            </select>
+          </label>
+          <div class="status" id="statusText">지도 데이터를 불러오는 중...</div>
+        </div>
+
+        <div class="legend">
+          <span><i class="dot general"></i> 일반쓰레기</span>
+          <span><i class="dot recycle"></i> 재활용쓰레기</span>
+          <span><i class="dot cigarette"></i> 담배꽁초 수거함</span>
+        </div>
+
+        <div class="list-wrap">
+          <h2>표시 목록</h2>
+          <div id="locationList" class="location-list"></div>
+        </div>
+      </aside>
+
+      <main class="map-wrap">
+        <div id="map"></div>
+      </main>
+    </div>
+
+    <script src="./config.js" defer></script>
+    <script src="./data.js" defer></script>
+    <script src="./app.js" defer></script>
+  </body>
+</html>
