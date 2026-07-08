@@ -160,6 +160,11 @@ function popupHtml(place) {
   `;
 }
 
+function buildKakaoRouteUrl(place) {
+  const label = encodeURIComponent(place.place || place.address || "Trash Bin");
+  return `https://map.kakao.com/link/to/${label},${place.lat},${place.lng}`;
+}
+
 function renderList(items, onSelect) {
   locationListEl.innerHTML = "";
   if (!items.length) {
@@ -202,6 +207,7 @@ function createMapState(kakao) {
     districtLoadPromises: new Map(),
     loadedDistricts: new Set(),
     routeTargetKey: null,
+    selectedPlaceKey: null,
   };
 }
 
@@ -225,18 +231,19 @@ function createOrUpdateMarker(state, place) {
   const position = new state.kakao.maps.LatLng(place.lat, place.lng);
   let marker = state.markers.get(place.key);
 
-  if (!marker) {
-    marker = new state.kakao.maps.Marker({
-      map: state.map,
-      position,
-      image: buildMarkerImage(state.kakao, getMarkerColor(place, state)),
-    });
-    state.kakao.maps.event.addListener(marker, "click", () => {
-      state.infoWindow.setContent(
-        `<div style="padding:12px 14px;min-width:240px;max-width:320px;">${popupHtml(place)}</div>`
-      );
-      state.infoWindow.open(state.map, marker);
-    });
+    if (!marker) {
+      marker = new state.kakao.maps.Marker({
+        map: state.map,
+        position,
+        image: buildMarkerImage(state.kakao, getMarkerColor(place, state)),
+      });
+      state.kakao.maps.event.addListener(marker, "click", () => {
+        state.selectedPlaceKey = place.key;
+        state.infoWindow.setContent(
+          `<div style="padding:12px 14px;min-width:240px;max-width:320px;">${popupHtml(place)}</div>`
+        );
+        state.infoWindow.open(state.map, marker);
+      });
     state.markers.set(place.key, marker);
   } else {
     marker.setPosition(position);
@@ -448,6 +455,7 @@ function updateListAndMarkers(state, placesByDistrict) {
   }
 
   renderList(visible, (place) => {
+    state.selectedPlaceKey = place.key;
     state.map.setCenter(new state.kakao.maps.LatLng(place.lat, place.lng));
     state.map.setLevel(4);
     const marker = state.markers.get(place.key);
@@ -495,74 +503,11 @@ function clearRoute(state) {
   state.routeState.routeCoords = null;
 }
 
-async function fetchRoutePath(startLatLng, endLatLng) {
-  const url =
-    `${ROUTE_API}${startLatLng.getLng()},${startLatLng.getLat()};${endLatLng.getLng()},${endLatLng.getLat()}` +
-    "?overview=full&geometries=geojson";
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`route fetch failed: ${response.status}`);
-  }
-
-  const json = await response.json();
-  const coords = json.routes?.[0]?.geometry?.coordinates;
-  if (!coords || !coords.length) {
-    throw new Error("route geometry missing");
-  }
-  return coords;
-}
-
-function drawRouteOnMap(state, routeCoords, targetPlace) {
-  clearRoute(state);
-
-  const path = routeCoords.map(([lng, lat]) => new state.kakao.maps.LatLng(lat, lng));
-  state.routeState.routeCoords = routeCoords;
-  state.routeState.polyline = new state.kakao.maps.Polyline({
-    map: state.map,
-    path,
-    strokeWeight: 5,
-    strokeColor: "#fbbf24",
-    strokeOpacity: 0.9,
-    strokeStyle: "solid",
-  });
-
-  const targetPosition = new state.kakao.maps.LatLng(targetPlace.lat, targetPlace.lng);
+function showTargetOnMap(state, targetPlace) {
+  state.selectedPlaceKey = targetPlace.key;
   state.routeTargetKey = targetPlace.key;
-  state.routeState.targetMarker = new state.kakao.maps.Marker({
-    map: state.map,
-    position: targetPosition,
-    image: buildTargetImage(state.kakao),
-    title: targetPlace.place || targetPlace.address,
-  });
-
-  const bounds = new state.kakao.maps.LatLngBounds();
-  path.forEach((latLng) => bounds.extend(latLng));
-  if (state.currentLocation.latLng) bounds.extend(state.currentLocation.latLng);
-  bounds.extend(targetPosition);
-  state.map.setBounds(bounds);
-}
-
-function applyStraightRoute(state, targetPlace) {
-  clearRoute(state);
-
-  const start = state.currentLocation.latLng;
-  const end = new state.kakao.maps.LatLng(targetPlace.lat, targetPlace.lng);
-  state.routeTargetKey = targetPlace.key;
-
-  state.routeState.polyline = new state.kakao.maps.Polyline({
-    map: state.map,
-    path: [start, end],
-    strokeWeight: 5,
-    strokeColor: "#fbbf24",
-    strokeOpacity: 0.7,
-    strokeStyle: "solid",
-  });
-  state.routeState.targetMarker = new state.kakao.maps.Marker({
-    map: state.map,
-    position: end,
-    image: buildTargetImage(state.kakao),
-    title: targetPlace.place || targetPlace.address,
-  });
+  state.map.setCenter(new state.kakao.maps.LatLng(targetPlace.lat, targetPlace.lng));
+  state.map.setLevel(4);
 }
 
 async function initializeMap() {
@@ -664,17 +609,16 @@ async function initializeMap() {
             statusTextEl.textContent = `${label}: ${loaded}/${total}`;
           });
 
-          const nearestPlace = findNearestPlace(state, getAllPlaces(placesByDistrict));
+          const allPlaces = getAllPlaces(placesByDistrict);
+          const selectedPlace =
+            state.selectedPlaceKey && allPlaces.find((place) => place.key === state.selectedPlaceKey);
+          const nearestPlace = selectedPlace || findNearestPlace(state, allPlaces);
           if (!nearestPlace) {
             emergencyStatusEl.textContent = "Could not find the nearest trash bin.";
             return;
           }
 
-          const routeCoords = await fetchRoutePath(
-            state.currentLocation.latLng,
-            new state.kakao.maps.LatLng(nearestPlace.lat, nearestPlace.lng)
-          );
-          drawRouteOnMap(state, routeCoords, nearestPlace);
+          showTargetOnMap(state, nearestPlace);
           updateListAndMarkers(state, placesByDistrict);
 
           const marker = state.markers.get(nearestPlace.key);
@@ -685,23 +629,18 @@ async function initializeMap() {
             state.infoWindow.open(state.map, marker);
           }
 
-          emergencyStatusEl.textContent = `Nearest bin: ${nearestPlace.district} ${
-            nearestPlace.place || nearestPlace.address
-          }`;
-          statusTextEl.textContent = "Emergency route displayed.";
-        } catch (error) {
-          const nearestPlace = findNearestPlace(state, getAllPlaces(placesByDistrict));
-          if (!nearestPlace) {
-            emergencyStatusEl.textContent = `Emergency route failed: ${error.message}`;
-            return;
+          const kakaoRouteUrl = buildKakaoRouteUrl(nearestPlace);
+          const opened = window.open(kakaoRouteUrl, "_blank", "noopener,noreferrer");
+          if (!opened) {
+            window.location.href = kakaoRouteUrl;
           }
 
-          applyStraightRoute(state, nearestPlace);
-          updateListAndMarkers(state, placesByDistrict);
-          emergencyStatusEl.textContent = `Emergency route shown as a straight line. Nearest bin: ${
-            nearestPlace.district
-          } ${nearestPlace.place || nearestPlace.address}`;
-          statusTextEl.textContent = "Emergency route shown as a straight line.";
+          emergencyStatusEl.textContent = `Opened Kakao Maps route to: ${nearestPlace.district} ${
+            nearestPlace.place || nearestPlace.address
+          }`;
+          statusTextEl.textContent = "Kakao Maps route opened.";
+        } catch (error) {
+          emergencyStatusEl.textContent = `Emergency route failed: ${error.message}`;
         } finally {
           emergencyBtnEl.disabled = false;
         }
