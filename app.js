@@ -231,6 +231,7 @@ function createMapState(kakao) {
     activeLoadToken: 0,
     districtLoadPromises: new Map(),
     loadedDistricts: new Set(),
+    preferredDistrict: null,
     routeTargetKey: null,
     selectedPlaceKey: null,
   };
@@ -365,6 +366,69 @@ async function centerToDistrict(state, district) {
   }
 }
 
+async function getDistrictCenterCoords(state, district) {
+  if (!district || district === "all") return null;
+
+  const cached = localStorage.getItem(districtCacheKey(district));
+  if (cached) {
+    const parsed = JSON.parse(cached);
+    if (parsed) return parsed;
+  }
+
+  const result = await new Promise((resolve) => {
+    state.geocoder.addressSearch(`서울특별시 ${district}`, (data, status) => {
+      if (status === state.kakao.maps.services.Status.OK && data && data.length) {
+        resolve({ lat: Number(data[0].y), lng: Number(data[0].x) });
+      } else {
+        resolve(null);
+      }
+    });
+  });
+
+  if (result) {
+    localStorage.setItem(districtCacheKey(district), JSON.stringify(result));
+  }
+
+  return result;
+}
+
+async function resolvePreferredDistrict(state, districtNames) {
+  const current = state.currentLocation.latLng;
+  if (!current) return null;
+
+  const currentLat = current.getLat();
+  const currentLng = current.getLng();
+
+  const regionName = await new Promise((resolve) => {
+    state.geocoder.coord2RegionCode(currentLng, currentLat, (data, status) => {
+      if (status !== state.kakao.maps.services.Status.OK || !data || !data.length) {
+        resolve(null);
+        return;
+      }
+
+      const match = data.find((item) => item.region_type === "H" || item.region_type === "B") || data[0];
+      const name = match?.region_2depth_name || null;
+      resolve(name && districtNames.includes(name) ? name : null);
+    });
+  });
+
+  if (regionName) return regionName;
+
+  let nearestDistrict = null;
+  let nearestDistance = Infinity;
+  for (const district of districtNames) {
+    const center = await getDistrictCenterCoords(state, district);
+    if (!center) continue;
+    const distance = distanceMeters(currentLat, currentLng, center.lat, center.lng);
+    if (distance < nearestDistance) {
+      nearestDistance = distance;
+      nearestDistrict = district;
+    }
+  }
+
+  return nearestDistrict;
+}
+
 async function loadDistrict(state, placesByDistrict, district, onProgress) {
   if (!district || district === "all") return [];
   if (state.loadedDistricts.has(district)) {
@@ -400,8 +464,8 @@ async function loadDistrict(state, placesByDistrict, district, onProgress) {
   return promise;
 }
 
-async function loadAllDistricts(state, placesByDistrict, onProgress) {
-  const districts = [...placesByDistrict.keys()].sort((a, b) => a.localeCompare(b, "ko"));
+async function loadAllDistricts(state, placesByDistrict, onProgress, districtOrder = null) {
+  const districts = districtOrder || [...placesByDistrict.keys()].sort((a, b) => a.localeCompare(b, "ko"));
   for (const district of districts) {
     await loadDistrict(state, placesByDistrict, district, onProgress);
   }
@@ -603,12 +667,16 @@ async function initializeMap() {
             emergencyStatusEl.textContent =
               "With current location set, the emergency button can find the nearest trash bin.";
             locateBtnEl.disabled = false;
-            onFilterChange();
+            void (async () => {
+              state.preferredDistrict = await resolvePreferredDistrict(state, districtNames);
+              onFilterChange();
+            })();
           },
           (error) => {
             statusTextEl.textContent = `Could not get current location: ${error.message}`;
             locateBtnEl.disabled = false;
             state.map.setCenter(new state.kakao.maps.LatLng(37.5665, 126.978));
+            state.preferredDistrict = null;
             onFilterChange();
           },
           {
@@ -635,10 +703,18 @@ async function initializeMap() {
         const routeWindow = window.open("", "_blank");
 
         try {
-          await ensureAllPlacesLoaded((loaded, total, place) => {
+          const loadOrder =
+            state.preferredDistrict && districtNames.includes(state.preferredDistrict)
+              ? [
+                  state.preferredDistrict,
+                  ...districtNames.filter((district) => district !== state.preferredDistrict),
+                ]
+              : districtNames;
+
+          await loadAllDistricts(state, placesByDistrict, (loaded, total, place) => {
             const label = place?.district ? `${place.district} loading` : "Loading all";
             statusTextEl.textContent = `${label}: ${loaded}/${total}`;
-          });
+          }, loadOrder);
 
           const allPlaces = getAllPlaces(placesByDistrict);
           const nearestPlace = findNearestPlace(state, allPlaces);
@@ -707,12 +783,20 @@ async function initializeMap() {
           statusTextEl.textContent = "Loading nearby bins...";
           locationListEl.innerHTML = '<div class="status">Loading nearby bins...</div>';
 
-          await ensureAllPlacesLoaded((loaded, total, place) => {
+          const loadOrder =
+            state.preferredDistrict && districtNames.includes(state.preferredDistrict)
+              ? [
+                  state.preferredDistrict,
+                  ...districtNames.filter((district) => district !== state.preferredDistrict),
+                ]
+              : districtNames;
+
+          await loadAllDistricts(state, placesByDistrict, (loaded, total, place) => {
             if (token !== state.activeLoadToken) return;
             const label = place?.district ? `${place.district} loading` : "Loading all";
             statusTextEl.textContent = `${label}: ${loaded}/${total}`;
             updateListAndMarkers(state, placesByDistrict);
-          });
+          }, loadOrder);
 
           if (token !== state.activeLoadToken) return;
 
