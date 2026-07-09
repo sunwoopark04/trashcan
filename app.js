@@ -1,8 +1,5 @@
 const APP_KEY = window.KAKAO_MAP_APP_KEY || "";
 
-const rawCountEl = document.getElementById("rawCount");
-const placeCountEl = document.getElementById("placeCount");
-const resolvedCountEl = document.getElementById("resolvedCount");
 const statusTextEl = document.getElementById("statusText");
 const districtFilterEl = document.getElementById("districtFilter");
 const typeFilterEl = document.getElementById("typeFilter");
@@ -186,10 +183,10 @@ function openKakaoRouteWindow(place, originLatLng, routeWindow = null) {
   return null;
 }
 
-function renderList(items, onSelect) {
+function renderList(items, onSelect, onRoute) {
   locationListEl.innerHTML = "";
   if (!items.length) {
-    locationListEl.innerHTML = '<div class="status">No places match the current filters.</div>';
+    locationListEl.innerHTML = '<div class="status">현재 조건에 맞는 쓰레기통이 없습니다.</div>';
     return;
   }
 
@@ -201,8 +198,16 @@ function renderList(items, onSelect) {
       <div class="location-sub">${item.address}</div>
       <div class="location-sub">Types: ${uniqueTypes(item.types).join(", ")}</div>
       <div class="location-sub">ID: ${item.ids.join(", ")}</div>
+      <div class="location-item-actions">
+        <button type="button" class="location-route-btn">길찾기</button>
+      </div>
     `;
     node.addEventListener("click", () => onSelect(item));
+    const routeButton = node.querySelector(".location-route-btn");
+    routeButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      onRoute(item);
+    });
     locationListEl.appendChild(node);
   }
 }
@@ -550,9 +555,12 @@ function updateListAndMarkers(state, placesByDistrict) {
       );
       state.infoWindow.open(state.map, marker);
     }
+  }, (place) => {
+    state.selectedPlaceKey = place.key;
+    showTargetOnMap(state, place);
+    refreshMarkerStyles(state, visible);
+    openKakaoRouteWindow(place, state.currentLocation.latLng);
   });
-
-  resolvedCountEl.textContent = String(visible.length);
   refreshMarkerStyles(state, visible);
 }
 
@@ -610,10 +618,6 @@ async function initializeMap() {
       const placesByDistrict = buildDistrictMap(groupedPlaces);
       const districtNames = [...placesByDistrict.keys()].sort((a, b) => a.localeCompare(b, "ko"));
 
-      rawCountEl.textContent = String(trashBins.length);
-      placeCountEl.textContent = String(groupedPlaces.length);
-      resolvedCountEl.textContent = "0";
-
       for (const district of districtNames) {
         const option = document.createElement("option");
         option.value = district;
@@ -623,13 +627,13 @@ async function initializeMap() {
 
       async function showCurrentLocation() {
         if (!navigator.geolocation) {
-          statusTextEl.textContent = "This browser does not support geolocation.";
+          statusTextEl.textContent = "이 브라우저는 위치 정보를 지원하지 않습니다.";
           state.map.setCenter(new state.kakao.maps.LatLng(37.5665, 126.978));
           return;
         }
 
         locateBtnEl.disabled = true;
-        statusTextEl.textContent = "Finding current location...";
+        statusTextEl.textContent = "현재 위치를 찾는 중...";
 
         navigator.geolocation.getCurrentPosition(
           (position) => {
@@ -659,7 +663,7 @@ async function initializeMap() {
             state.map.setCenter(currentPosition);
             state.map.setLevel(4);
 
-            statusTextEl.textContent = "Current location found.";
+            statusTextEl.textContent = "현재 위치를 찾았습니다.";
             emergencyStatusEl.textContent =
               "With current location set, the emergency button can find the nearest trash bin.";
             locateBtnEl.disabled = false;
@@ -669,7 +673,7 @@ async function initializeMap() {
             })();
           },
           (error) => {
-            statusTextEl.textContent = `Could not get current location: ${error.message}`;
+            statusTextEl.textContent = `현재 위치를 가져오지 못했습니다: ${error.message}`;
             locateBtnEl.disabled = false;
             state.map.setCenter(new state.kakao.maps.LatLng(37.5665, 126.978));
             state.preferredDistrict = null;
@@ -689,7 +693,7 @@ async function initializeMap() {
 
       async function handleEmergency() {
         if (!state.currentLocation.latLng) {
-          emergencyStatusEl.textContent = "Please set your current location first.";
+          emergencyStatusEl.textContent = "먼저 현재 위치를 설정해 주세요.";
           return;
         }
 
@@ -706,7 +710,7 @@ async function initializeMap() {
             findNearestPlace(state, loadedPlaces) ||
             findNearestPlace(state, getAllPlaces(placesByDistrict));
           if (!targetPlace) {
-            emergencyStatusEl.textContent = "Could not find a trash bin to route to.";
+            emergencyStatusEl.textContent = "길찾기할 쓰레기통을 찾지 못했습니다.";
             return;
           }
 
@@ -723,12 +727,12 @@ async function initializeMap() {
 
           openKakaoRouteWindow(targetPlace, state.currentLocation.latLng);
 
-          emergencyStatusEl.textContent = `Opened Kakao Maps route to: ${targetPlace.district} ${
+          emergencyStatusEl.textContent = `카카오맵 경로를 열었습니다: ${targetPlace.district} ${
             targetPlace.place || targetPlace.address
           }`;
-          statusTextEl.textContent = "Kakao Maps route opened.";
+          statusTextEl.textContent = "카카오맵 길찾기를 열었습니다.";
         } catch (error) {
-          emergencyStatusEl.textContent = `Emergency route failed: ${error.message}`;
+          emergencyStatusEl.textContent = `긴급 경로 안내에 실패했습니다: ${error.message}`;
         } finally {
           emergencyBtnEl.disabled = false;
         }
@@ -753,7 +757,7 @@ async function initializeMap() {
         routeStatusEl.textContent = `카카오맵 길찾기 열기: ${selectedPlace.district} ${
           selectedPlace.place || selectedPlace.address
         }`;
-        statusTextEl.textContent = "Selected bin route opened.";
+        statusTextEl.textContent = "선택한 쓰레기통의 길찾기를 열었습니다.";
       }
 
       async function onFilterChange() {
@@ -766,8 +770,8 @@ async function initializeMap() {
         clearAllMarkers(state);
 
         if (state.activeDistrict === "all") {
-          statusTextEl.textContent = "Loading nearby bins...";
-          locationListEl.innerHTML = '<div class="status">Loading nearby bins...</div>';
+          statusTextEl.textContent = "가까운 쓰레기통을 불러오는 중...";
+          locationListEl.innerHTML = '<div class="status">가까운 쓰레기통을 불러오는 중...</div>';
 
           const loadOrder =
             state.preferredDistrict && districtNames.includes(state.preferredDistrict)
@@ -816,7 +820,7 @@ async function initializeMap() {
       routeBtnEl.addEventListener("click", handleSelectedRoute);
       emergencyBtnEl.addEventListener("click", handleEmergency);
 
-      statusTextEl.textContent = "Loading nearby bins...";
+      statusTextEl.textContent = "가까운 쓰레기통을 불러오는 중...";
       emergencyStatusEl.textContent =
         "Set your current location, then use the emergency button to find the nearest bin.";
       routeStatusEl.textContent = "목록에서 쓰레기통을 선택한 뒤 길찾기를 누르세요.";
@@ -842,17 +846,16 @@ async function initializeMap() {
           #0f172a;
       ">
         <div style="max-width:520px;">
-          <div style="font-size:20px;font-weight:800;margin-bottom:10px;">Failed to load Kakao Maps</div>
+          <div style="font-size:20px;font-weight:800;margin-bottom:10px;">카카오맵 로드에 실패했습니다</div>
           <div style="line-height:1.6;color:#cbd5e1;">
-            HTML loaded, but the map SDK is missing or the key is not configured.
+            HTML은 로드되었지만 지도 SDK가 없거나 키가 설정되지 않았습니다.
             <br />
-            Update <strong>config.js</strong> with <code>window.KAKAO_MAP_APP_KEY</code> and register the current site
-            in the Kakao developer console's JavaScript SDK domain list.
+            <strong>config.js</strong>의 <code>window.KAKAO_MAP_APP_KEY</code>를 설정하고, 카카오 개발자 콘솔의 JavaScript SDK 도메인 목록에 현재 사이트를 등록해 주세요.
           </div>
         </div>
       </div>
     `;
-    statusTextEl.textContent = "HTML loaded. Please check the Kakao Maps settings.";
+    statusTextEl.textContent = "HTML은 로드되었지만 카카오맵 설정을 확인해 주세요.";
   }
 }
 

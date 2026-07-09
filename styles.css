@@ -62,27 +62,6 @@ body {
   text-transform: uppercase;
 }
 
-.stats {
-  margin-top: 20px;
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
-}
-
-.stat-card {
-  padding: 14px;
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  background: var(--panel-2);
-}
-
-.stat-card strong {
-  display: block;
-  margin-top: 8px;
-  font-size: 22px;
-  color: #fff;
-}
-
 .controls {
   margin-top: 18px;
   display: grid;
@@ -150,6 +129,17 @@ body {
   opacity: 0.5;
   cursor: not-allowed;
   transform: none;
+}
+
+.route-btn,
+.location-route-btn,
+.locate-btn,
+.emergency-btn {
+  transition:
+    transform 0.15s ease,
+    border-color 0.15s ease,
+    filter 0.15s ease,
+    opacity 0.15s ease;
 }
 
 .route-status {
@@ -326,6 +316,34 @@ body {
 .location-sub {
   font-size: 13px;
   line-height: 1.5;
+}
+
+.location-item-actions {
+  margin-top: 12px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.location-route-btn {
+  padding: 8px 12px;
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  border-radius: 10px;
+  background: rgba(56, 189, 248, 0.12);
+  color: #e2e8f0;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.location-route-btn:hover {
+  border-color: rgba(56, 189, 248, 0.7);
+  transform: translateY(-1px);
+}
+
+.location-route-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
 }
 
 .map-wrap {

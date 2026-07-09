@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>서울 공원 쓰레기통 지도</title>
+    <title>쓰레기통 찾기</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -17,70 +17,56 @@
       <aside class="panel">
         <div class="hero">
           <div class="eyebrow">Seoul Waste Bin Map</div>
-          <h1>서울 공원 · 광장 쓰레기통 위치</h1>
+          <h1>쓰레기통 찾기</h1>
           <p>
-            현재 위치를 기준으로 가장 가까운 쓰레기통 5개를 먼저 보여주고, 선택한 항목은
-            카카오맵 길찾기로 바로 연결됩니다.
+            현재 위치를 기준으로 가장 가까운 쓰레기통 5개를 먼저 보여주고, 원하는 위치는 바로
+            길찾기로 연결됩니다.
           </p>
         </div>
 
-        <div class="stats">
-          <div class="stat-card">
-            <span class="stat-label">원본 수</span>
-            <strong id="rawCount">0</strong>
-          </div>
-          <div class="stat-card">
-            <span class="stat-label">장소 수</span>
-            <strong id="placeCount">0</strong>
-          </div>
-          <div class="stat-card">
-            <span class="stat-label">표시 완료</span>
-            <strong id="resolvedCount">0</strong>
-          </div>
-        </div>
-
         <div class="controls">
+          <button type="button" id="locateBtn" class="locate-btn">현재위치</button>
+          <div class="status" id="statusText">지도를 불러오는 중...</div>
+
+          <div class="list-wrap">
+            <h2>가까운 쓰레기통 5개</h2>
+            <div id="locationList" class="location-list"></div>
+          </div>
+
           <label>
-            구 선택
+            구역 선택
             <select id="districtFilter">
               <option value="all">전체</option>
             </select>
           </label>
+
           <label>
-            쓰레기 종류
+            쓰레기통 종류
             <select id="typeFilter">
               <option value="all">전체</option>
-              <option value="일반쓰레기">일반쓰레기</option>
-              <option value="재활용쓰레기">재활용쓰레기</option>
-              <option value="담배꽁초 수거함">담배꽁초 수거함</option>
+              <option value="general">일반 쓰레기통</option>
+              <option value="recycle">재활용 수거함</option>
+              <option value="cigarette">담배꽁초 수거함</option>
             </select>
           </label>
 
-          <div class="status" id="statusText">지도를 불러오는 중...</div>
-          <button type="button" id="locateBtn" class="locate-btn">현재 위치</button>
-
           <div class="route-box">
             <div class="route-status" id="routeStatus">
-              목록에서 쓰레기통을 선택한 뒤 길찾기를 누르세요.
+              목록에서 쓰레기통을 선택한 뒤 길찾기를 누르면 카카오맵 경로를 열 수 있어요.
             </div>
             <button type="button" id="routeBtn" class="route-btn">길찾기</button>
           </div>
 
           <button type="button" id="emergencyBtn" class="emergency-btn">긴급</button>
           <div class="emergency-status" id="emergencyStatus">
-            현재 위치를 잡은 뒤 긴급 버튼을 누르면 가장 가까운 쓰레기통으로 경로를 표시합니다.
+            현재 위치를 설정한 뒤 긴급 버튼을 누르면 가장 가까운 쓰레기통으로 안내합니다.
           </div>
         </div>
 
         <div class="legend">
-          <span><i class="dot general"></i> 일반쓰레기</span>
-          <span><i class="dot recycle"></i> 재활용쓰레기</span>
+          <span><i class="dot general"></i> 일반 쓰레기통</span>
+          <span><i class="dot recycle"></i> 재활용 수거함</span>
           <span><i class="dot cigarette"></i> 담배꽁초 수거함</span>
-        </div>
-
-        <div class="list-wrap">
-          <h2>표시 목록</h2>
-          <div id="locationList" class="location-list"></div>
         </div>
       </aside>
 
